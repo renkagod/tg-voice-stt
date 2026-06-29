@@ -34,12 +34,18 @@ flowchart TD
 
 ## Quick Start
 
-### 1. Requirements
+### 1. Clone the Repository
+```bash
+git clone https://github.com/renkagod/tg-voice-stt.git
+cd tg-voice-stt
+```
+
+### 2. Requirements
 - Docker and Docker Compose v2 (or Python 3.10+ and FFmpeg installed locally)
 - A Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
 - A Google Gemini API Key (from [Google AI Studio](https://aistudio.google.com/))
 
-### 2. Configuration
+### 3. Configuration
 Copy the template `.env.example` file and fill in your variables:
 
 ```bash
@@ -54,7 +60,7 @@ ALLOWED_USERS=123456789,987654321
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
-### 3. Deploy via Docker Compose
+### 4. Deploy via Docker Compose
 
 Build and run the bot in a hardened, non-privileged, read-only Docker container:
 
@@ -72,7 +78,7 @@ To stop the bot:
 docker compose down
 ```
 
-### 4. Manual Deployment (Local)
+### 5. Manual Deployment (Local)
 
 1. Install local dependencies:
    ```bash
@@ -111,38 +117,52 @@ docker compose down
 - **Умное саммари:** Бот сразу присылает дословный текст сообщения, под которым находится инлайн-кнопка «✨ Clean & Summarize». При нажатии на неё бот редактирует сообщение, убирая из текста все слова-паразиты (`эээ`, `ну`, `в общем`), восстанавливает связность речи и выводит краткую выжимку (саммари) списком.
 - **Безопасный Docker:** Запуск в read-only контейнере от имени несигнатурного пользователя с записью временных аудиофайлов в оперативную память (`tmpfs`).
 
-### Требования
+### Быстрый старт
+
+#### 1. Клонирование репозитория
+```bash
+git clone https://github.com/renkagod/tg-voice-stt.git
+cd tg-voice-stt
+```
+
+#### 2. Требования
 - Docker и Docker Compose v2 (или Python 3.10+ и установленный FFmpeg локально)
 - Токен Telegram-бота (от [@BotFather](https://t.me/BotFather))
 - Ключ Google Gemini API (от [Google AI Studio](https://aistudio.google.com/))
 
-### Быстрый старт в Docker
+#### 3. Настройка
+Скопируйте шаблон `.env.example` в `.env` и настройте переменные:
+```bash
+cp .env.example .env
+```
 
-1. Скопируйте `.env.example` в `.env` и настройте переменные:
-   ```bash
-   cp .env.example .env
-   ```
-2. Отредактируйте файл `.env`:
-   ```ini
-   TELEGRAM_TOKEN=ваш_токен_телеграм
-   GEMINI_API_KEY=ваш_ключ_gemini
-   ALLOWED_USERS=123456789,987654321
-   GEMINI_MODEL=gemini-2.5-flash
-   ```
-3. Запустите контейнеры:
-   ```bash
-   docker compose up -d --build
-   ```
-4. Логи:
-   ```bash
-   docker compose logs -f
-   ```
-5. Остановить бота:
-   ```bash
-   docker compose down
-   ```
+Отредактируйте файл `.env`:
+```ini
+TELEGRAM_TOKEN=ваш_токен_телеграм
+GEMINI_API_KEY=ваш_ключ_gemini
+ALLOWED_USERS=123456789,987654321
+GEMINI_MODEL=gemini-2.5-flash
+```
 
-### Локальный запуск (без Docker)
+#### 4. Запуск через Docker Compose
+
+Соберите и запустите бота в защищенном read-only Docker-контейнере:
+
+```bash
+docker compose up -d --build
+```
+
+Просмотр логов:
+```bash
+docker compose logs -f
+```
+
+Остановка бота:
+```bash
+docker compose down
+```
+
+#### 5. Локальный запуск (без Docker)
 
 1. Установите зависимости:
    ```bash
