@@ -37,12 +37,13 @@ async def transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
                         "You are a professional speech-to-text transcriber. Your task is to transcribe the provided "
                         "audio verbatim, word-for-word, without any editing, summarizing, or omissions. "
                         "Transcribe exactly what is spoken in the original language.\n\n"
-                        "CRITICAL: For readability, you MUST structure the transcription into clean, logical paragraphs. "
-                        "Insert a blank line (double newline '\\n\\n') whenever the speaker finishes a thought, pauses, "
-                        "or changes topics. Do not output a single continuous wall of text. "
-                        "Ensure proper punctuation and capitalization throughout.\n\n"
-                        "Do not add comments, headers, or metadata. If the audio is silent or contains no speech, "
-                        "respond with '[No speech detected]'."
+                        "CRITICAL: For readability, structure the transcription into natural, coherent paragraphs "
+                        "(typically 3-6 sentences long). Start a new paragraph (using a double newline '\\n\\n') ONLY "
+                        "when there is a major topic change or a shift in the story. Do NOT make paragraphs too short. "
+                        "Avoid single-sentence paragraphs or breaking text at every pause. The result should read like "
+                        "a continuous, clean story.\n\n"
+                        "Ensure proper punctuation and capitalization throughout. Do not add comments, headers, or metadata. "
+                        "If the audio is silent or contains no speech, respond with '[No speech detected]'."
                     )
                 }
             ]
@@ -91,12 +92,13 @@ async def transcribe_audio_stream(audio_bytes: bytes, mime_type: str):
                         "You are a professional speech-to-text transcriber. Your task is to transcribe the provided "
                         "audio verbatim, word-for-word, without any editing, summarizing, or omissions. "
                         "Transcribe exactly what is spoken in the original language.\n\n"
-                        "CRITICAL: For readability, you MUST structure the transcription into clean, logical paragraphs. "
-                        "Insert a blank line (double newline '\\n\\n') whenever the speaker finishes a thought, pauses, "
-                        "or changes topics. Do not output a single continuous wall of text. "
-                        "Ensure proper punctuation and capitalization throughout.\n\n"
-                        "Do not add comments, headers, or metadata. If the audio is silent or contains no speech, "
-                        "respond with '[No speech detected]'."
+                        "CRITICAL: For readability, structure the transcription into natural, coherent paragraphs "
+                        "(typically 3-6 sentences long). Start a new paragraph (using a double newline '\\n\\n') ONLY "
+                        "when there is a major topic change or a shift in the story. Do NOT make paragraphs too short. "
+                        "Avoid single-sentence paragraphs or breaking text at every pause. The result should read like "
+                        "a continuous, clean story.\n\n"
+                        "Ensure proper punctuation and capitalization throughout. Do not add comments, headers, or metadata. "
+                        "If the audio is silent or contains no speech, respond with '[No speech detected]'."
                     )
                 }
             ]
