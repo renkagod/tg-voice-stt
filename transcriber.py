@@ -42,6 +42,10 @@ async def transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
                         "when there is a major topic change or a shift in the story. Do NOT make paragraphs too short. "
                         "Avoid single-sentence paragraphs or breaking text at every pause. The result should read like "
                         "a continuous, clean story.\n\n"
+                        "STT DETAILS & NON-VERBALS:\n"
+                        "- If the speaker makes a long pause or hesitates, indicate it with an ellipsis '...'.\n"
+                        "- Include non-verbal sounds such as sighs, deep breaths, laughter, etc., "
+                        "representing them clearly in square brackets (e.g. [sighs], [sigh], [laughs], [giggles], [gasps], [snorts]).\n\n"
                         "Ensure proper punctuation and capitalization throughout. Do not add comments, headers, or metadata. "
                         "If the audio is silent or contains no speech, respond with '[No speech detected]'."
                     )
@@ -97,6 +101,10 @@ async def transcribe_audio_stream(audio_bytes: bytes, mime_type: str):
                         "when there is a major topic change or a shift in the story. Do NOT make paragraphs too short. "
                         "Avoid single-sentence paragraphs or breaking text at every pause. The result should read like "
                         "a continuous, clean story.\n\n"
+                        "STT DETAILS & NON-VERBALS:\n"
+                        "- If the speaker makes a long pause or hesitates, indicate it with an ellipsis '...'.\n"
+                        "- Include non-verbal sounds such as sighs, deep breaths, laughter, etc., "
+                        "representing them clearly in square brackets (e.g. [sighs], [sigh], [laughs], [giggles], [gasps], [snorts]).\n\n"
                         "Ensure proper punctuation and capitalization throughout. Do not add comments, headers, or metadata. "
                         "If the audio is silent or contains no speech, respond with '[No speech detected]'."
                     )
