@@ -68,6 +68,18 @@ def load_transcription(text_hash: str) -> str:
             return f.read()
     return ""
 
+from typing import Union, Optional
+from aiogram.methods.base import TelegramMethod
+
+class SendMessageDraft(TelegramMethod[bool]):
+    __returning__ = bool
+    __api_method__ = "sendMessageDraft"
+    
+    chat_id: Union[int, str]
+    draft_id: int
+    text: str
+    parse_mode: Optional[str] = None
+
 # Helper for native streaming with editMessageText fallback
 async def update_message_stream(bot: Bot, chat_id: int, draft_id: int, text: str, fallback_msg=None):
     """
@@ -75,15 +87,8 @@ async def update_message_stream(bot: Bot, chat_id: int, draft_id: int, text: str
     Falls back to classical editMessageText if not supported or fails.
     """
     try:
-        # Call the new Bot API method
-        await bot.make_request(
-            method="sendMessageDraft",
-            params={
-                "chat_id": chat_id,
-                "draft_id": draft_id,
-                "text": text
-            }
-        )
+        # Call the new Bot API method using aiogram's standard call mechanism
+        await bot(SendMessageDraft(chat_id=chat_id, draft_id=draft_id, text=text))
         return None  # Native streaming active, no fallback message needed yet
     except Exception as e:
         logger.warning(f"sendMessageDraft failed: {e}. Falling back to editMessageText.")
