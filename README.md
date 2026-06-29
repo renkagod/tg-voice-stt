@@ -11,7 +11,7 @@ An asynchronous, lightweight Telegram bot utility for high-speed transcription o
 | **Silent Mode** | Ignores all text and media messages, responding only to voice and video notes. |
 | **Security Whitelist** | Restricts access to a set of pre-approved Telegram User IDs. Non-whitelisted users are silently ignored. |
 | **Low Latency** | Built on fully asynchronous Python (`aiogram` + `aiohttp`) with direct REST calls to Gemini to avoid library overhead. |
-| **Smart Summary** | Verbatim transcription is sent immediately. An inline button triggers Gemini to clean up filler words (`эээ`, `ну`, `как бы`) and format a structured summary. |
+| **Smart Summary** | Verbatim transcription is sent immediately. An inline button triggers Gemini to clean up filler words (e.g., "uh", "um", "like") and format a structured summary. |
 | **Hardened Docker** | Read-only container root filesystem with memory-based `tmpfs` for temporary audio storage. |
 
 ## Architecture
@@ -27,7 +27,7 @@ flowchart TD
     FFmpeg --> SendGemini[Send audio bytes inline to Gemini]
     Direct --> SendGemini
     SendGemini -->|Verbatim transcription| Reply[Reply with text + Inline Button]
-    Reply --> Click[Click 'Очистить и саммаризовать']
+    Reply --> Click[Click 'Clean & Summarize']
     Click --> GeminiClean[Send text to Gemini for cleanup & summary]
     GeminiClean --> Edit[Edit message to append clean text & summary]
 ```
@@ -108,13 +108,61 @@ docker compose down
 - **Тихий режим (No Chatbot):** Бот полностью игнорирует текстовые сообщения и реагирует исключительно на голосовые (voice) и кружочки (video_note).
 - **Безопасность (Whitelist):** Белый список разрешенных Telegram ID в `.env`. Сообщения от посторонних пользователей полностью игнорируются (без ответа).
 - **Минимальная задержка:** Использование асинхронного `aiogram` и прямых REST-запросов к Gemini без лишних оберток.
-- **Умное саммари:** Бот сразу присылает дословный текст сообщения, под которым находится инлайн-кнопка «✨ Очистить и саммаризовать». При нажатии на неё бот редактирует сообщение, убирая из текста все слова-паразиты (`эээ`, `ну`, `в общем`), восстанавливает связность речи и выводит краткую выжимку (саммари) списком.
+- **Умное саммари:** Бот сразу присылает дословный текст сообщения, под которым находится инлайн-кнопка «✨ Clean & Summarize». При нажатии на неё бот редактирует сообщение, убирая из текста все слова-паразиты (`эээ`, `ну`, `в общем`), восстанавливает связность речи и выводит краткую выжимку (саммари) списком.
 - **Безопасный Docker:** Запуск в read-only контейнере от имени несигнатурного пользователя с записью временных аудиофайлов в оперативную память (`tmpfs`).
+
+### Требования
+- Docker и Docker Compose v2 (или Python 3.10+ и установленный FFmpeg локально)
+- Токен Telegram-бота (от [@BotFather](https://t.me/BotFather))
+- Ключ Google Gemini API (от [Google AI Studio](https://aistudio.google.com/))
 
 ### Быстрый старт в Docker
 
-1. Скопируйте `.env.example` в `.env` и настройте переменные.
-2. Запустите:
+1. Скопируйте `.env.example` в `.env` и настройте переменные:
+   ```bash
+   cp .env.example .env
+   ```
+2. Отредактируйте файл `.env`:
+   ```ini
+   TELEGRAM_TOKEN=ваш_токен_телеграм
+   GEMINI_API_KEY=ваш_ключ_gemini
+   ALLOWED_USERS=123456789,987654321
+   GEMINI_MODEL=gemini-2.5-flash
+   ```
+3. Запустите контейнеры:
    ```bash
    docker compose up -d --build
    ```
+4. Логи:
+   ```bash
+   docker compose logs -f
+   ```
+5. Остановить бота:
+   ```bash
+   docker compose down
+   ```
+
+### Локальный запуск (без Docker)
+
+1. Установите зависимости:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Убедитесь, что `ffmpeg` установлен в вашей системе и добавлен в PATH.
+3. Запустите бота:
+   ```bash
+   python main.py
+   ```
+
+### Справка по конфигурации
+
+| Переменная окружения | Описание | Значение по умолчанию |
+|----------------------|----------|-----------------------|
+| `TELEGRAM_TOKEN` | Токен Telegram-бота | *Обязательно* |
+| `GEMINI_API_KEY` | Ключ Gemini API | *Обязательно* |
+| `ALLOWED_USERS` | Список разрешенных Telegram ID через запятую | *Обязательно* |
+| `GEMINI_MODEL` | Модель Google Gemini для STT и редактирования | `gemini-2.5-flash` |
+
+### Лицензия
+
+[MIT](LICENSE) — Copyright (c) 2026 [renkagod](https://github.com/renkagod).
