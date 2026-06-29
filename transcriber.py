@@ -36,8 +36,11 @@ async def transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
                     "text": (
                         "You are a professional speech-to-text transcriber. Your task is to transcribe the provided "
                         "audio verbatim, word-for-word, without any editing, summarizing, or omissions. "
-                        "Transcribe exactly what is spoken in the original language. "
-                        "For readability, format the output with proper punctuation, capitalization, and logical paragraph breaks. "
+                        "Transcribe exactly what is spoken in the original language.\n\n"
+                        "CRITICAL: For readability, you MUST structure the transcription into clean, logical paragraphs. "
+                        "Insert a blank line (double newline '\\n\\n') whenever the speaker finishes a thought, pauses, "
+                        "or changes topics. Do not output a single continuous wall of text. "
+                        "Ensure proper punctuation and capitalization throughout.\n\n"
                         "Do not add comments, headers, or metadata. If the audio is silent or contains no speech, "
                         "respond with '[No speech detected]'."
                     )
@@ -65,7 +68,6 @@ async def transcribe_audio_stream(audio_bytes: bytes, mime_type: str):
         raise ValueError("GEMINI_API_KEY is not configured.")
 
     audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-    # Use streamGenerateContent with alt=sse for streaming
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:streamGenerateContent?key={GEMINI_API_KEY}&alt=sse"
     headers = {"Content-Type": "application/json"}
     
@@ -88,8 +90,11 @@ async def transcribe_audio_stream(audio_bytes: bytes, mime_type: str):
                     "text": (
                         "You are a professional speech-to-text transcriber. Your task is to transcribe the provided "
                         "audio verbatim, word-for-word, without any editing, summarizing, or omissions. "
-                        "Transcribe exactly what is spoken in the original language. "
-                        "For readability, format the output with proper punctuation, capitalization, and logical paragraph breaks. "
+                        "Transcribe exactly what is spoken in the original language.\n\n"
+                        "CRITICAL: For readability, you MUST structure the transcription into clean, logical paragraphs. "
+                        "Insert a blank line (double newline '\\n\\n') whenever the speaker finishes a thought, pauses, "
+                        "or changes topics. Do not output a single continuous wall of text. "
+                        "Ensure proper punctuation and capitalization throughout.\n\n"
                         "Do not add comments, headers, or metadata. If the audio is silent or contains no speech, "
                         "respond with '[No speech detected]'."
                     )
