@@ -3,13 +3,14 @@ import asyncio
 import logging
 import tempfile
 import hashlib
+import time
 from aiogram import Bot, Dispatcher, F, types, BaseMiddleware
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.client.default import DefaultBotProperties
 from aiogram.exceptions import TelegramAPIError
 
 from config import TELEGRAM_TOKEN, ALLOWED_USERS
-from transcriber import transcribe_audio, summarize_and_clean_text
+from transcriber import transcribe_audio_stream, summarize_and_clean_text_stream
 
 # Setup logging
 logging.basicConfig(
@@ -51,22 +52,7 @@ async def extract_audio_from_mp4(mp4_path: str, wav_path: str) -> bool:
     logger.info(f"Audio extraction {'succeeded' if success else 'failed'}")
     return success
 
-# Helper functions for handling long text and state
-def chunk_text(text: str, limit: int = 4000) -> list[str]:
-    chunks = []
-    while len(text) > limit:
-        split_idx = text.rfind("\n", 0, limit)
-        if split_idx == -1:
-            split_idx = text.rfind(" ", 0, limit)
-        if split_idx == -1:
-            split_idx = limit
-            
-        chunks.append(text[:split_idx])
-        text = text[split_idx:].lstrip()
-    if text:
-        chunks.append(text)
-    return chunks
-
+# Helper functions for handling state
 def get_text_hash(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
@@ -108,34 +94,96 @@ async def handle_voice_message(message: types.Message):
         with open(temp_ogg_path, "rb") as f:
             audio_bytes = f.read()
         
-        # Transcribe using Gemini API
-        transcription = await transcribe_audio(audio_bytes, mime_type="audio/ogg")
+        # Stream transcription to Telegram
+        full_text = ""
+        current_message_text = ""
+        tg_msg = None
+        last_edit_time = 0
+        edit_interval = 1.5  # Rate limit safety buffer
+        status_deleted = False
         
-        if not transcription:
-            transcription = "[No speech detected]"
+        async for chunk in transcribe_audio_stream(audio_bytes, mime_type="audio/ogg"):
+            if not chunk:
+                continue
+                
+            # Delete loading status on first text chunk
+            if not status_deleted:
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+                status_deleted = True
+                
+            full_text += chunk
+            current_message_text += chunk
             
-        # Clean up status message before sending results
-        try:
-            await status_msg.delete()
-        except Exception:
-            pass
-            
-        # Store transcription for summary
-        text_hash = get_text_hash(transcription)
-        save_transcription(text_hash, transcription)
+            # If current chunk exceeds message limit, split it
+            if len(current_message_text) > 4000:
+                if tg_msg:
+                    try:
+                        await tg_msg.edit_text(current_message_text[:4000])
+                    except Exception:
+                        pass
+                else:
+                    tg_msg = await message.reply(current_message_text[:4000])
+                    
+                current_message_text = current_message_text[4000:]
+                tg_msg = None
+                last_edit_time = 0
+                
+            # Throttled edit
+            now = time.monotonic()
+            if now - last_edit_time >= edit_interval:
+                if current_message_text.strip():
+                    if tg_msg:
+                        try:
+                            await tg_msg.edit_text(current_message_text)
+                        except Exception:
+                            pass
+                    else:
+                        tg_msg = await message.reply(current_message_text)
+                    last_edit_time = now
         
-        # Chunk text if too long
-        chunks = chunk_text(transcription)
-        
-        # Attach button to the last chunk
-        builder = InlineKeyboardBuilder()
-        builder.button(text="✨ Clean & Summarize", callback_data=f"sum:{text_hash}")
-        
-        for i, chunk in enumerate(chunks):
-            if i == len(chunks) - 1:
-                await message.reply(chunk, reply_markup=builder.as_markup())
+        # Cleanup status if it wasn't deleted (e.g., empty or silent audio)
+        if not status_deleted:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+                
+        # Final update
+        if current_message_text.strip():
+            if tg_msg:
+                try:
+                    await tg_msg.edit_text(current_message_text)
+                except Exception:
+                    pass
             else:
-                await message.reply(chunk)
+                tg_msg = await message.reply(current_message_text)
+                
+        # Fallback if text is empty
+        if not full_text.strip():
+            full_text = "[No speech detected]"
+            if tg_msg:
+                try:
+                    await tg_msg.edit_text(full_text)
+                except Exception:
+                    pass
+            else:
+                tg_msg = await message.reply(full_text)
+                
+        # Store full transcription for summary button
+        text_hash = get_text_hash(full_text)
+        save_transcription(text_hash, full_text)
+        
+        # Attach button to the last message chunk
+        if tg_msg and full_text.strip() != "[No speech detected]":
+            builder = InlineKeyboardBuilder()
+            builder.button(text="✨ Clean & Summarize", callback_data=f"sum:{text_hash}")
+            try:
+                await tg_msg.edit_reply_markup(reply_markup=builder.as_markup())
+            except Exception as e:
+                logger.warning(f"Could not attach reply markup: {e}")
         
     except Exception as e:
         logger.error(f"Error handling voice message: {e}", exc_info=True)
@@ -187,34 +235,96 @@ async def handle_video_note_message(message: types.Message):
                 audio_bytes = f.read()
             mime_type = "video/mp4"
             
-        # Transcribe using Gemini API
-        transcription = await transcribe_audio(audio_bytes, mime_type=mime_type)
+        # Stream transcription to Telegram
+        full_text = ""
+        current_message_text = ""
+        tg_msg = None
+        last_edit_time = 0
+        edit_interval = 1.5
+        status_deleted = False
         
-        if not transcription:
-            transcription = "[No speech detected]"
+        async for chunk in transcribe_audio_stream(audio_bytes, mime_type=mime_type):
+            if not chunk:
+                continue
+                
+            # Delete loading status on first text chunk
+            if not status_deleted:
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+                status_deleted = True
+                
+            full_text += chunk
+            current_message_text += chunk
             
-        # Clean up status message before sending results
-        try:
-            await status_msg.delete()
-        except Exception:
-            pass
-            
-        # Store transcription for summary
-        text_hash = get_text_hash(transcription)
-        save_transcription(text_hash, transcription)
+            # If current chunk exceeds message limit, split it
+            if len(current_message_text) > 4000:
+                if tg_msg:
+                    try:
+                        await tg_msg.edit_text(current_message_text[:4000])
+                    except Exception:
+                        pass
+                else:
+                    tg_msg = await message.reply(current_message_text[:4000])
+                    
+                current_message_text = current_message_text[4000:]
+                tg_msg = None
+                last_edit_time = 0
+                
+            # Throttled edit
+            now = time.monotonic()
+            if now - last_edit_time >= edit_interval:
+                if current_message_text.strip():
+                    if tg_msg:
+                        try:
+                            await tg_msg.edit_text(current_message_text)
+                        except Exception:
+                            pass
+                    else:
+                        tg_msg = await message.reply(current_message_text)
+                    last_edit_time = now
         
-        # Chunk text if too long
-        chunks = chunk_text(transcription)
-        
-        # Attach button to the last chunk
-        builder = InlineKeyboardBuilder()
-        builder.button(text="✨ Clean & Summarize", callback_data=f"sum:{text_hash}")
-        
-        for i, chunk in enumerate(chunks):
-            if i == len(chunks) - 1:
-                await message.reply(chunk, reply_markup=builder.as_markup())
+        # Cleanup status if it wasn't deleted
+        if not status_deleted:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+                
+        # Final update
+        if current_message_text.strip():
+            if tg_msg:
+                try:
+                    await tg_msg.edit_text(current_message_text)
+                except Exception:
+                    pass
             else:
-                await message.reply(chunk)
+                tg_msg = await message.reply(current_message_text)
+                
+        # Fallback if text is empty
+        if not full_text.strip():
+            full_text = "[No speech detected]"
+            if tg_msg:
+                try:
+                    await tg_msg.edit_text(full_text)
+                except Exception:
+                    pass
+            else:
+                tg_msg = await message.reply(full_text)
+                
+        # Store full transcription for summary button
+        text_hash = get_text_hash(full_text)
+        save_transcription(text_hash, full_text)
+        
+        # Attach button to the last message chunk
+        if tg_msg and full_text.strip() != "[No speech detected]":
+            builder = InlineKeyboardBuilder()
+            builder.button(text="✨ Clean & Summarize", callback_data=f"sum:{text_hash}")
+            try:
+                await tg_msg.edit_reply_markup(reply_markup=builder.as_markup())
+            except Exception as e:
+                logger.warning(f"Could not attach reply markup: {e}")
         
     except Exception as e:
         logger.error(f"Error handling video note message: {e}", exc_info=True)
@@ -262,19 +372,47 @@ async def handle_summarize_callback(callback_query: types.CallbackQuery):
         action="typing"
     )
     
+    # Send placeholder message for the summary that we will stream into
+    summary_msg = await callback_query.message.reply("⏳ *Cleaning and summarizing...*", parse_mode="Markdown")
+    
     try:
-        # Generate summary and clean text via Gemini
-        summary = await summarize_and_clean_text(original_text)
+        full_summary = ""
+        last_edit_time = 0
+        edit_interval = 1.5
         
-        # Send summary as a separate message replying to the transcription
+        async for chunk in summarize_and_clean_text_stream(original_text):
+            if not chunk:
+                continue
+            full_summary += chunk
+            
+            # Throttled edit to prevent rate limits
+            now = time.monotonic()
+            if now - last_edit_time >= edit_interval:
+                try:
+                    await summary_msg.edit_text(full_summary, parse_mode="Markdown")
+                except TelegramAPIError:
+                    try:
+                        await summary_msg.edit_text(full_summary, parse_mode=None)
+                    except TelegramAPIError:
+                        pass
+                last_edit_time = now
+                
+        # Final update
         try:
-            await callback_query.message.reply(summary, parse_mode="Markdown")
-        except TelegramAPIError as e:
-            logger.warning(f"Failed to send summary in Markdown: {e}. Falling back to plain text.")
-            await callback_query.message.reply(summary, parse_mode=None)
+            await summary_msg.edit_text(full_summary, parse_mode="Markdown")
+        except TelegramAPIError:
+            try:
+                await summary_msg.edit_text(full_summary, parse_mode=None)
+            except TelegramAPIError:
+                pass
                 
     except Exception as e:
         logger.error(f"Error generating summary: {e}", exc_info=True)
+        try:
+            await summary_msg.edit_text("❌ *Error generating summary.*", parse_mode="Markdown")
+        except Exception:
+            pass
+        
         # Restore button if it failed, so user can try again
         builder = InlineKeyboardBuilder()
         builder.button(text="✨ Clean & Summarize (Error - retry)", callback_data=f"sum:{text_hash}")
