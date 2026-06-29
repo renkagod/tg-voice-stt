@@ -68,6 +68,38 @@ def load_transcription(text_hash: str) -> str:
             return f.read()
     return ""
 
+# Helper for native streaming with editMessageText fallback
+async def update_message_stream(bot: Bot, chat_id: int, draft_id: int, text: str, fallback_msg=None):
+    """
+    Attempts to stream the message using the new native sendMessageDraft method.
+    Falls back to classical editMessageText if not supported or fails.
+    """
+    try:
+        # Call the new Bot API method
+        await bot.make_request(
+            method="sendMessageDraft",
+            params={
+                "chat_id": chat_id,
+                "draft_id": draft_id,
+                "text": text
+            }
+        )
+        return None  # Native streaming active, no fallback message needed yet
+    except Exception as e:
+        logger.warning(f"sendMessageDraft failed: {e}. Falling back to editMessageText.")
+        if fallback_msg:
+            try:
+                await fallback_msg.edit_text(text)
+                return fallback_msg
+            except Exception:
+                return fallback_msg
+        else:
+            try:
+                msg = await bot.send_message(chat_id=chat_id, text=text)
+                return msg
+            except Exception:
+                return None
+
 # Handler for Voice Messages
 @dp.message(F.voice)
 async def handle_voice_message(message: types.Message):
@@ -97,7 +129,7 @@ async def handle_voice_message(message: types.Message):
         # Stream transcription to Telegram
         full_text = ""
         current_message_text = ""
-        tg_msg = None
+        fallback_msg = None
         last_edit_time = 0
         edit_interval = 1.5  # Rate limit safety buffer
         status_deleted = False
@@ -119,29 +151,25 @@ async def handle_voice_message(message: types.Message):
             
             # If current chunk exceeds message limit, split it
             if len(current_message_text) > 4000:
-                if tg_msg:
+                if fallback_msg:
                     try:
-                        await tg_msg.edit_text(current_message_text[:4000])
+                        await fallback_msg.edit_text(current_message_text[:4000])
                     except Exception:
                         pass
                 else:
-                    tg_msg = await message.reply(current_message_text[:4000])
+                    await message.reply(current_message_text[:4000])
                     
                 current_message_text = current_message_text[4000:]
-                tg_msg = None
+                fallback_msg = None
                 last_edit_time = 0
                 
             # Throttled edit
             now = time.monotonic()
             if now - last_edit_time >= edit_interval:
                 if current_message_text.strip():
-                    if tg_msg:
-                        try:
-                            await tg_msg.edit_text(current_message_text)
-                        except Exception:
-                            pass
-                    else:
-                        tg_msg = await message.reply(current_message_text)
+                    fallback_msg = await update_message_stream(
+                        bot, message.chat.id, 1, current_message_text, fallback_msg
+                    )
                     last_edit_time = now
         
         # Cleanup status if it wasn't deleted (e.g., empty or silent audio)
@@ -151,24 +179,28 @@ async def handle_voice_message(message: types.Message):
             except Exception:
                 pass
                 
-        # Final update
+        # Send the final, persistent message (which clears/replaces the draft)
         if current_message_text.strip():
-            if tg_msg:
+            if fallback_msg:
                 try:
+                    tg_msg = fallback_msg
                     await tg_msg.edit_text(current_message_text)
                 except Exception:
-                    pass
+                    tg_msg = await message.reply(current_message_text)
             else:
                 tg_msg = await message.reply(current_message_text)
-                
+        else:
+            tg_msg = fallback_msg
+            
         # Fallback if text is empty
         if not full_text.strip():
             full_text = "[No speech detected]"
-            if tg_msg:
+            if fallback_msg:
                 try:
-                    await tg_msg.edit_text(full_text)
+                    await fallback_msg.edit_text(full_text)
+                    tg_msg = fallback_msg
                 except Exception:
-                    pass
+                    tg_msg = await message.reply(full_text)
             else:
                 tg_msg = await message.reply(full_text)
                 
@@ -238,7 +270,7 @@ async def handle_video_note_message(message: types.Message):
         # Stream transcription to Telegram
         full_text = ""
         current_message_text = ""
-        tg_msg = None
+        fallback_msg = None
         last_edit_time = 0
         edit_interval = 1.5
         status_deleted = False
@@ -260,29 +292,25 @@ async def handle_video_note_message(message: types.Message):
             
             # If current chunk exceeds message limit, split it
             if len(current_message_text) > 4000:
-                if tg_msg:
+                if fallback_msg:
                     try:
-                        await tg_msg.edit_text(current_message_text[:4000])
+                        await fallback_msg.edit_text(current_message_text[:4000])
                     except Exception:
                         pass
                 else:
-                    tg_msg = await message.reply(current_message_text[:4000])
+                    await message.reply(current_message_text[:4000])
                     
                 current_message_text = current_message_text[4000:]
-                tg_msg = None
+                fallback_msg = None
                 last_edit_time = 0
                 
             # Throttled edit
             now = time.monotonic()
             if now - last_edit_time >= edit_interval:
                 if current_message_text.strip():
-                    if tg_msg:
-                        try:
-                            await tg_msg.edit_text(current_message_text)
-                        except Exception:
-                            pass
-                    else:
-                        tg_msg = await message.reply(current_message_text)
+                    fallback_msg = await update_message_stream(
+                        bot, message.chat.id, 1, current_message_text, fallback_msg
+                    )
                     last_edit_time = now
         
         # Cleanup status if it wasn't deleted
@@ -292,24 +320,28 @@ async def handle_video_note_message(message: types.Message):
             except Exception:
                 pass
                 
-        # Final update
+        # Send final message
         if current_message_text.strip():
-            if tg_msg:
+            if fallback_msg:
                 try:
+                    tg_msg = fallback_msg
                     await tg_msg.edit_text(current_message_text)
                 except Exception:
-                    pass
+                    tg_msg = await message.reply(current_message_text)
             else:
                 tg_msg = await message.reply(current_message_text)
-                
+        else:
+            tg_msg = fallback_msg
+            
         # Fallback if text is empty
         if not full_text.strip():
             full_text = "[No speech detected]"
-            if tg_msg:
+            if fallback_msg:
                 try:
-                    await tg_msg.edit_text(full_text)
+                    await fallback_msg.edit_text(full_text)
+                    tg_msg = fallback_msg
                 except Exception:
-                    pass
+                    tg_msg = await message.reply(full_text)
             else:
                 tg_msg = await message.reply(full_text)
                 
@@ -360,7 +392,7 @@ async def handle_summarize_callback(callback_query: types.CallbackQuery):
             pass
         return
     
-    # Remove button from the original message immediately to show it has been processed
+    # Remove button from the original message immediately
     try:
         await callback_query.message.edit_reply_markup(reply_markup=None)
     except TelegramAPIError:
@@ -372,8 +404,7 @@ async def handle_summarize_callback(callback_query: types.CallbackQuery):
         action="typing"
     )
     
-    # Send placeholder message for the summary that we will stream into
-    summary_msg = await callback_query.message.reply("⏳ *Cleaning and summarizing...*", parse_mode="Markdown")
+    fallback_summary_msg = None
     
     try:
         full_summary = ""
@@ -385,35 +416,43 @@ async def handle_summarize_callback(callback_query: types.CallbackQuery):
                 continue
             full_summary += chunk
             
-            # Throttled edit to prevent rate limits
+            # Throttled stream update
             now = time.monotonic()
             if now - last_edit_time >= edit_interval:
-                try:
-                    await summary_msg.edit_text(full_summary, parse_mode="Markdown")
-                except TelegramAPIError:
-                    try:
-                        await summary_msg.edit_text(full_summary, parse_mode=None)
-                    except TelegramAPIError:
-                        pass
+                fallback_summary_msg = await update_message_stream(
+                    bot, callback_query.message.chat.id, 2, full_summary, fallback_summary_msg
+                )
                 last_edit_time = now
                 
-        # Final update
-        try:
-            await summary_msg.edit_text(full_summary, parse_mode="Markdown")
-        except TelegramAPIError:
+        # Final update to save the summary permanently in the chat
+        if fallback_summary_msg:
             try:
-                await summary_msg.edit_text(full_summary, parse_mode=None)
+                await fallback_summary_msg.edit_text(full_summary, parse_mode="Markdown")
             except TelegramAPIError:
-                pass
+                try:
+                    await fallback_summary_msg.edit_text(full_summary, parse_mode=None)
+                except TelegramAPIError:
+                    pass
+        else:
+            try:
+                await callback_query.message.reply(full_summary, parse_mode="Markdown")
+            except TelegramAPIError:
+                await callback_query.message.reply(full_summary, parse_mode=None)
                 
     except Exception as e:
         logger.error(f"Error generating summary: {e}", exc_info=True)
-        try:
-            await summary_msg.edit_text("❌ *Error generating summary.*", parse_mode="Markdown")
-        except Exception:
-            pass
+        if fallback_summary_msg:
+            try:
+                await fallback_summary_msg.edit_text("❌ *Error generating summary.*", parse_mode="Markdown")
+            except Exception:
+                pass
+        else:
+            try:
+                await callback_query.message.reply("❌ *Error generating summary.*")
+            except Exception:
+                pass
         
-        # Restore button if it failed, so user can try again
+        # Restore button if it failed
         builder = InlineKeyboardBuilder()
         builder.button(text="✨ Clean & Summarize (Error - retry)", callback_data=f"sum:{text_hash}")
         try:
