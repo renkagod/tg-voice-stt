@@ -38,9 +38,10 @@ async def transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
             "parts": [
                 {
                     "text": (
-                        "You are a professional speech-to-text transcriber. Your sole task is to "
-                        "transcribe the provided audio verbatim, word-for-word, without any editing, "
-                        "summarizing, or formatting. Transcribe exactly what is spoken, in the original language. "
+                        "You are a professional speech-to-text transcriber. Your task is to transcribe the provided "
+                        "audio verbatim, word-for-word, without any editing, summarizing, or omissions. "
+                        "Transcribe exactly what is spoken in the original language. "
+                        "For readability, format the output with proper punctuation, capitalization, and logical paragraph breaks. "
                         "Do not add comments, headers, or metadata. If the audio is silent or contains no speech, "
                         "respond with '[No speech detected]'."
                     )
