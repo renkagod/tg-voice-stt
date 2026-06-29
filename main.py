@@ -98,7 +98,8 @@ async def handle_voice_message(message: types.Message):
     
     try:
         # Download
-        await bot.download_file(file_info := await bot.get_file(voice.file_id), temp_ogg_path)
+        file_info = await bot.get_file(voice.file_id)
+        await bot.download_file(file_info.file_path, temp_ogg_path)
         
         # Update status
         await status_msg.edit_text("🎙️ *Transcribing audio... (Gemini)*", parse_mode="Markdown")
@@ -167,7 +168,8 @@ async def handle_video_note_message(message: types.Message):
     
     try:
         # Download
-        await bot.download_file(file_info := await bot.get_file(video_note.file_id), temp_mp4_path)
+        file_info = await bot.get_file(video_note.file_id)
+        await bot.download_file(file_info.file_path, temp_mp4_path)
         
         # Update status
         await status_msg.edit_text("🎙️ *Extracting and transcribing audio... (Gemini)*", parse_mode="Markdown")
