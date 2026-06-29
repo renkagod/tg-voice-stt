@@ -77,11 +77,11 @@ async def handle_voice_message(message: types.Message):
         transcription = await transcribe_audio(audio_bytes, mime_type="audio/ogg")
         
         if not transcription:
-            transcription = "[Речь отсутствует]"
+            transcription = "[No speech detected]"
             
         # Build reply keyboard
         builder = InlineKeyboardBuilder()
-        builder.button(text="✨ Очистить и саммаризовать", callback_data="summarize")
+        builder.button(text="✨ Clean & Summarize", callback_data="summarize")
         
         await message.reply(
             transcription,
@@ -139,11 +139,11 @@ async def handle_video_note_message(message: types.Message):
         transcription = await transcribe_audio(audio_bytes, mime_type=mime_type)
         
         if not transcription:
-            transcription = "[Речь отсутствует]"
+            transcription = "[No speech detected]"
             
         # Build reply keyboard
         builder = InlineKeyboardBuilder()
-        builder.button(text="✨ Очистить и саммаризовать", callback_data="summarize")
+        builder.button(text="✨ Clean & Summarize", callback_data="summarize")
         
         await message.reply(
             transcription,
@@ -165,10 +165,10 @@ async def handle_video_note_message(message: types.Message):
 @dp.callback_query(F.data == "summarize")
 async def handle_summarize_callback(callback_query: types.CallbackQuery):
     # Prevent double clicks by showing loading state in Telegram UI
-    await callback_query.answer("⏳ Обработка текста...", show_alert=False)
+    await callback_query.answer("⏳ Processing text...", show_alert=False)
     
     original_text = callback_query.message.text
-    if not original_text or original_text == "[Речь отсутствует]":
+    if not original_text or original_text == "[No speech detected]":
         await callback_query.message.edit_reply_markup(reply_markup=None)
         return
     
@@ -209,7 +209,7 @@ async def handle_summarize_callback(callback_query: types.CallbackQuery):
         logger.error(f"Error generating summary: {e}", exc_info=True)
         # Restore button if it failed, so user can try again
         builder = InlineKeyboardBuilder()
-        builder.button(text="✨ Очистить и саммаризовать (Ошибка - попробовать еще раз)", callback_data="summarize")
+        builder.button(text="✨ Clean & Summarize (Error - retry)", callback_data="summarize")
         try:
             await callback_query.message.edit_reply_markup(reply_markup=builder.as_markup())
         except TelegramAPIError:

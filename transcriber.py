@@ -38,12 +38,11 @@ async def transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
             "parts": [
                 {
                     "text": (
-                        "Ты — профессиональный инструмент для распознавания речи. Твоя единственная задача — "
-                        "расшифровать предоставленный аудиофайл дословно, слово в слово, без каких-либо сокращений, "
-                        "обобщений, форматирования, удаления слов-паразитов или исправлений ошибок. Запиши ровно те "
-                        "слова, которые были произнесены, на том языке, на котором они звучат. Не добавляй никаких "
-                        "комментариев от себя, не придумывай заголовки, не вводи разметку. Если в аудиозаписи "
-                        "тишина или нет речи, ответь просто '[Речь отсутствует]'."
+                        "You are a professional speech-to-text transcriber. Your sole task is to "
+                        "transcribe the provided audio verbatim, word-for-word, without any editing, "
+                        "summarizing, or formatting. Transcribe exactly what is spoken, in the original language. "
+                        "Do not add comments, headers, or metadata. If the audio is silent or contains no speech, "
+                        "respond with '[No speech detected]'."
                     )
                 }
             ]
@@ -73,8 +72,8 @@ async def summarize_and_clean_text(verbatim_text: str) -> str:
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY is not configured.")
 
-    if not verbatim_text or verbatim_text == "[Речь отсутствует]":
-        return "Нечего очищать и саммаризовать."
+    if not verbatim_text or verbatim_text == "[No speech detected]":
+        return "Nothing to clean and summarize."
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
@@ -93,23 +92,21 @@ async def summarize_and_clean_text(verbatim_text: str) -> str:
             "parts": [
                 {
                     "text": (
-                        "Ты — профессиональный редактор. Тебе предоставлен дословный текст расшифровки "
-                        "аудиосообщения (возможно, с опечатками, повторами и словами-паразитами вроде 'эээ', "
-                        "'ну', 'как бы', 'так сказать').\n\n"
-                        "Сделай следующее:\n"
-                        "1. Очисти текст от слов-паразитов, повторов, заиканий и лишней воды. Сделай его "
-                        "грамматически правильным, связным, структурированным и легкочитаемым, сохранив "
-                        "при этом стиль автора и все важные детали.\n"
-                        "2. Ниже напиши краткую выжимку (саммари) с главными мыслями в виде структурированного "
-                        "маркированного списка.\n\n"
-                        "Формат ответа:\n"
-                        "✍️ **Очищенный текст:**\n"
-                        "[чистый текст]\n\n"
-                        "📌 **Главные мысли (Саммари):**\n"
-                        "- [мысль 1]\n"
-                        "- [мысль 2]\n\n"
-                        "Отвечай строго в указанном формате на русском языке, не добавляй никаких лишних приветствий "
-                        "или мета-комментариев от себя."
+                        "You are a professional editor. You are provided with a verbatim transcript of a voice message "
+                        "(which may contain typos, repetitions, and filler words like 'uh', 'um', 'like', 'well').\n\n"
+                        "Perform the following tasks:\n"
+                        "1. Clean up the text by removing filler words, repetitions, stuttering, and fluff. Make it "
+                        "grammatically correct, coherent, and easy to read, while preserving the author's language, "
+                        "style, and key details.\n"
+                        "2. Provide a concise summary of the key points as a structured bulleted list.\n\n"
+                        "Ensure that your response is written in the same language as the provided transcript.\n\n"
+                        "Format your response exactly as follows:\n"
+                        "✍️ **Cleaned Text:**\n"
+                        "[cleaned text]\n\n"
+                        "📌 **Key Summary Points:**\n"
+                        "- [point 1]\n"
+                        "- [point 2]\n\n"
+                        "Do not add any greetings, preambles, or extra comments."
                     )
                 }
             ]
