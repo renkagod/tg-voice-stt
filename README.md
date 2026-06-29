@@ -57,7 +57,7 @@ Edit the `.env` file:
 TELEGRAM_TOKEN=your_telegram_bot_token
 GEMINI_API_KEY=your_gemini_api_key
 ALLOWED_USERS=123456789,987654321
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
 ### 4. Deploy via Docker Compose
@@ -97,7 +97,7 @@ docker compose down
 | `TELEGRAM_TOKEN` | Telegram Bot Token from @BotFather | *Required* |
 | `GEMINI_API_KEY` | API Key from Google AI Studio | *Required* |
 | `ALLOWED_USERS` | Comma-separated list of approved Telegram User IDs | *Required* |
-| `GEMINI_MODEL` | The Google Gemini model to use for STT and editing | `gemini-2.5-flash` |
+| `GEMINI_MODEL` | The Google Gemini model to use for STT and editing | `gemini-3.1-flash-lite` |
 
 ## License
 
@@ -141,7 +141,7 @@ cp .env.example .env
 TELEGRAM_TOKEN=ваш_токен_телеграм
 GEMINI_API_KEY=ваш_ключ_gemini
 ALLOWED_USERS=123456789,987654321
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
 #### 4. Запуск через Docker Compose
@@ -181,7 +181,7 @@ docker compose down
 | `TELEGRAM_TOKEN` | Токен Telegram-бота | *Обязательно* |
 | `GEMINI_API_KEY` | Ключ Gemini API | *Обязательно* |
 | `ALLOWED_USERS` | Список разрешенных Telegram ID через запятую | *Обязательно* |
-| `GEMINI_MODEL` | Модель Google Gemini для STT и редактирования | `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Модель Google Gemini для STT и редактирования | `gemini-3.1-flash-lite` |
 
 ### Лицензия
 

@@ -35,4 +35,4 @@ if ALLOWED_USERS_RAW:
             print(f"Warning: Invalid user ID '{user_id}' in ALLOWED_USERS. Skipping.")
 
 # Optional configurations
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
