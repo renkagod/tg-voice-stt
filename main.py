@@ -170,7 +170,7 @@ async def handle_voice_message(message: types.Message):
                 
             # Throttled edit
             now = time.monotonic()
-            current_interval = 1.5 if fallback_msg else 0.3
+            current_interval = 1.5
             if now - last_edit_time >= current_interval:
                 if current_message_text.strip():
                     fallback_msg = await update_message_stream(
@@ -312,7 +312,7 @@ async def handle_video_note_message(message: types.Message):
                 
             # Throttled edit
             now = time.monotonic()
-            current_interval = 1.5 if fallback_msg else 0.3
+            current_interval = 1.5
             if now - last_edit_time >= current_interval:
                 if current_message_text.strip():
                     fallback_msg = await update_message_stream(
@@ -425,7 +425,7 @@ async def handle_summarize_callback(callback_query: types.CallbackQuery):
             
             # Throttled stream update
             now = time.monotonic()
-            current_interval = 1.5 if fallback_summary_msg else 0.3
+            current_interval = 1.5
             if now - last_edit_time >= current_interval:
                 fallback_summary_msg = await update_message_stream(
                     bot, callback_query.message.chat.id, 2, full_summary, fallback_summary_msg
