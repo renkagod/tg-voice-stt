@@ -11,7 +11,10 @@ An asynchronous, lightweight Telegram bot utility for high-speed transcription o
 | **Silent Mode** | Ignores all text and media messages, responding only to voice and video notes. |
 | **Security Whitelist** | Restricts access to a set of pre-approved Telegram User IDs. Non-whitelisted users are silently ignored. |
 | **Low Latency** | Built on fully asynchronous Python (`aiogram` + `aiohttp`) with direct REST calls to Gemini to avoid library overhead. |
-| **Smart Summary** | Verbatim transcription is sent immediately. An inline button triggers Gemini to clean up filler words (e.g., "uh", "um", "like") and format a structured summary. |
+| **Native Streaming** | Streams transcription updates in real-time using Telegram's native draft mechanism (`sendMessageDraft`) with safe rate-limited fallback. |
+| **High Fidelity STT** | Transcribes audio with pauses formatted as `...` and non-verbal actions (e.g. `[sighs]`, `[laughs]`) in brackets. |
+| **Smart Summary** | Verbatim transcription is sent immediately. An inline button triggers Gemini to clean up filler words (preserving slang, tone, and vocabulary) and format a structured summary. |
+| **Reply Bypass** | Ignores voice/video notes sent in reply to the bot's messages, allowing you to read the cleaned text and record a new clean voice track in the same chat. |
 | **Hardened Docker** | Read-only container root filesystem with memory-based `tmpfs` for temporary audio storage. |
 
 ## Architecture
@@ -114,7 +117,10 @@ docker compose down
 - **Тихий режим (No Chatbot):** Бот полностью игнорирует текстовые сообщения и реагирует исключительно на голосовые (voice) и кружочки (video_note).
 - **Безопасность (Whitelist):** Белый список разрешенных Telegram ID в `.env`. Сообщения от посторонних пользователей полностью игнорируются (без ответа).
 - **Минимальная задержка:** Использование асинхронного `aiogram` и прямых REST-запросов к Gemini без лишних оберток.
-- **Умное саммари:** Бот сразу присылает дословный текст сообщения, под которым находится инлайн-кнопка «✨ Clean & Summarize». При нажатии на неё бот редактирует сообщение, убирая из текста все слова-паразиты (`эээ`, `ну`, `в общем`), восстанавливает связность речи и выводит краткую выжимку (саммари) списком.
+- **Нативный стриминг:** Вывод текста в реальном времени через черновики Telegram (`sendMessageDraft`) с безопасным лимитированным переключением на редактирование при необходимости.
+- **Высокая детализация STT:** Фиксация пауз и заминок в виде `...`, а также невербальных звуков (вздохи, смех и др.) в скобках вроде `[sighs]`.
+- **Умное саммари:** Бот присылает дословный текст, под которым находится кнопка «✨ Clean & Summarize». Бот убирает из текста только слова-паразиты, полностью сохраняя ваш сленг, стиль общения и фразеологию, а затем выводит краткую выжимку списком.
+- **Игнорирование Reply-ответов:** Бот игнорирует ГС и кружочки, отправленные как ответ (reply) на его сообщения. Это позволяет наговаривать новые сообщения в том же чате, держа перед глазами исходный текст.
 - **Безопасный Docker:** Запуск в read-only контейнере от имени несигнатурного пользователя с записью временных аудиофайлов в оперативную память (`tmpfs`).
 
 ### Быстрый старт
