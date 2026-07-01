@@ -108,6 +108,10 @@ async def update_message_stream(bot: Bot, chat_id: int, draft_id: int, text: str
 # Handler for Voice Messages
 @dp.message(F.voice)
 async def handle_voice_message(message: types.Message):
+    if message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == message.bot.id:
+        logger.info(f"Ignoring voice message because it is a reply to the bot's own message.")
+        return
+
     await message.bot.send_chat_action(chat_id=message.chat.id, action="upload_voice")
     
     voice = message.voice
@@ -239,6 +243,10 @@ async def handle_voice_message(message: types.Message):
 # Handler for Video Notes ("Circles")
 @dp.message(F.video_note)
 async def handle_video_note_message(message: types.Message):
+    if message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == message.bot.id:
+        logger.info(f"Ignoring video note because it is a reply to the bot's own message.")
+        return
+
     await message.bot.send_chat_action(chat_id=message.chat.id, action="upload_voice")
     
     video_note = message.video_note
