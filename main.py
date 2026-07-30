@@ -240,20 +240,39 @@ async def handle_voice_message(message: types.Message):
             except Exception as e:
                 logger.error(f"Failed to remove temp file {temp_ogg_path}: {e}")
 
-# Handler for Video Notes ("Circles")
-@dp.message(F.video_note)
-async def handle_video_note_message(message: types.Message):
+# Handler for Video Notes ("Circles"), Regular Videos, Audio files, and Video/Audio Documents
+@dp.message(F.video_note | F.video | F.audio | F.document)
+async def handle_video_or_audio_message(message: types.Message):
     if message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == message.bot.id:
-        logger.info(f"Ignoring video note because it is a reply to the bot's own message.")
+        logger.info(f"Ignoring media message because it is a reply to the bot's own message.")
+        return
+
+    media_obj = message.video_note or message.video or message.audio or message.document
+    if not media_obj:
+        return
+
+    if message.document:
+        mime = message.document.mime_type or ""
+        name = message.document.file_name or ""
+        valid_exts = (".mp4", ".mov", ".mkv", ".avi", ".webm", ".mp3", ".m4a", ".wav", ".ogg", ".aac", ".flac")
+        if not (mime.startswith("video/") or mime.startswith("audio/") or name.lower().endswith(valid_exts)):
+            return  # Ignore non-video/audio documents
+
+    # Check file size (Telegram Bot API download limit for standard bots is 20MB)
+    if media_obj.file_size and media_obj.file_size > 20 * 1024 * 1024:
+        await message.reply(
+            "❌ *Файл слишком большой (> 20 МБ).* Telegram API не позволяет ботам скачивать файлы крупнее 20 МБ.\n\n"
+            "💡 *Совет:* Сжмите видео (например, понизьте разрешение) или отправьте только аудиодорожку.",
+            parse_mode="Markdown"
+        )
         return
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="upload_voice")
     
-    video_note = message.video_note
-    logger.info(f"Received video note from user {message.from_user.id}. File ID: {video_note.file_id}")
+    logger.info(f"Received media from user {message.from_user.id}. File ID: {media_obj.file_id}")
     
     # Send immediate loading status message
-    status_msg = await message.reply("⏳ *Downloading video note...*", parse_mode="Markdown")
+    status_msg = await message.reply("⏳ *Downloading media...*", parse_mode="Markdown")
     
     fd_mp4, temp_mp4_path = tempfile.mkstemp(suffix=".mp4")
     fd_wav, temp_wav_path = tempfile.mkstemp(suffix=".wav")
@@ -262,7 +281,7 @@ async def handle_video_note_message(message: types.Message):
     
     try:
         # Download
-        file_info = await bot.get_file(video_note.file_id)
+        file_info = await bot.get_file(media_obj.file_id)
         await bot.download_file(file_info.file_path, temp_mp4_path)
         
         # Update status
