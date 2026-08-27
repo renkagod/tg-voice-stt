@@ -68,17 +68,18 @@ async def _stream_gemini_content(model: str, audio_bytes: bytes, mime_type: str)
                 {
                     "text": (
                         "You are a professional speech-to-text transcriber. Your task is to transcribe the provided "
-                        "audio verbatim, word-for-word, without any editing, summarizing, or omissions. "
+                        "audio verbatim, word-for-word, without omitting, summarizing, or rewriting any spoken words. "
                         "Transcribe exactly what is spoken in the original language.\n\n"
-                        "CRITICAL: Structure the transcription into continuous, readable text. Use standard single spaces "
-                        "between sentences within a paragraph. Insert a double newline '\\n\\n' ONLY between major, "
-                        "substantial paragraphs (typically 4-6 sentences long). NEVER insert double newlines '\\n\\n' "
-                        "after short single sentences, phrases, or conversational pauses.\n\n"
+                        "READABILITY & STRUCTURE (CRITICAL):\n"
+                        "- Structure the transcription into concise, readable paragraphs (typically 2-4 sentences each) separated by double newlines ('\\n\\n').\n"
+                        "- Insert a paragraph break ('\\n\\n') whenever the speaker switches thoughts, moves to a new subtopic, starts an explanation, or makes a noticeable topical transition.\n"
+                        "- NEVER output a dense, unbroken wall of text.\n"
+                        "- Use natural punctuation (periods, commas, colons, question marks). For direct speech or quoted thoughts (e.g. 'типа: ...'), format them clearly with colons or quotation marks.\n\n"
                         "STT DETAILS & NON-VERBALS:\n"
-                        "- If the speaker makes a long pause or hesitates, indicate it with an ellipsis '...'.\n"
+                        "- If the speaker makes a pause or hesitates, indicate it with an ellipsis '...'.\n"
                         "- Include non-verbal sounds such as sighs, deep breaths, laughter, etc., "
                         "representing them clearly in square brackets (e.g. [sighs], [sigh], [laughs], [giggles], [gasps], [snorts]).\n\n"
-                        "Ensure proper punctuation and capitalization throughout. Do not add comments, headers, or metadata. "
+                        "Output ONLY the transcription. Do not add headers, commentary, or metadata. "
                         "If the audio is silent or contains no speech, respond with '[No speech detected]'."
                     )
                 }
