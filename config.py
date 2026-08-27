@@ -41,7 +41,26 @@ GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lit
 GEMINI_SUMMARY_MODEL = os.getenv("GEMINI_SUMMARY_MODEL", "gemini-3.5-flash-lite").strip()
 
 import json
-SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
+import tempfile
+
+def _get_settings_filepath() -> str:
+    env_path = os.getenv("SETTINGS_FILE")
+    if env_path:
+        return env_path
+    
+    local_path = os.path.join(os.path.dirname(__file__), "user_settings.json")
+    try:
+        # Check if local directory is writable
+        test_file = os.path.join(os.path.dirname(__file__), ".test_write")
+        with open(test_file, "w") as f:
+            f.write("")
+        os.remove(test_file)
+        return local_path
+    except Exception:
+        # Read-only container / filesystem: store in temp directory (tmpfs)
+        return os.path.join(tempfile.gettempdir(), "user_settings.json")
+
+SETTINGS_FILE = _get_settings_filepath()
 
 def load_user_settings() -> dict:
     if os.path.exists(SETTINGS_FILE):
@@ -57,7 +76,7 @@ def save_user_settings(settings: dict):
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=2, ensure_ascii=False)
     except Exception as e:
-        print(f"Error saving settings: {e}")
+        print(f"Error saving settings to {SETTINGS_FILE}: {e}")
 
 def get_user_model(user_id: int) -> str:
     settings = load_user_settings()
