@@ -133,20 +133,35 @@ async def _transcribe_interactions(model: str, audio_bytes: bytes, mime_type: st
                 error_text = await response.text()
                 raise RuntimeError(f"Gemini Interactions API error (Status {response.status}): {error_text}")
             data = await response.json()
-            if "output_text" in data:
+            if "output_text" in data and data["output_text"]:
                 return data["output_text"].strip()
+
             if "steps" in data:
+                extracted_texts = []
                 for step in data["steps"]:
-                    if step.get("type") == "model_output" and "text" in step:
-                        return step["text"].strip()
-                    if "model_output" in step:
-                        out = step["model_output"]
-                        if isinstance(out, str):
-                            return out.strip()
-                        if isinstance(out, dict) and "text" in out:
-                            return out["text"].strip()
-            if "candidates" in data:
-                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    if step.get("type") == "model_output":
+                        content = step.get("content", [])
+                        if isinstance(content, list):
+                            for part in content:
+                                if isinstance(part, dict) and "text" in part:
+                                    extracted_texts.append(part["text"])
+                                elif isinstance(part, str):
+                                    extracted_texts.append(part)
+                        elif isinstance(content, dict) and "text" in content:
+                            extracted_texts.append(content["text"])
+                        elif isinstance(content, str):
+                            extracted_texts.append(content)
+                        elif "text" in step:
+                            extracted_texts.append(step["text"])
+                if extracted_texts:
+                    return "\n".join(extracted_texts).strip()
+
+            if "candidates" in data and data["candidates"]:
+                parts = data["candidates"][0].get("content", {}).get("parts", [])
+                candidate_texts = [p.get("text", "") for p in parts if "text" in p]
+                if candidate_texts:
+                    return "\n".join(candidate_texts).strip()
+
             return str(data)
 
 async def transcribe_audio(audio_bytes: bytes, mime_type: str, model_name: Optional[str] = None) -> str:
