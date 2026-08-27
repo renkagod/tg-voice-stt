@@ -113,6 +113,8 @@ env/
 
 # Project specific
 .env
+user_settings.json
+data/
 tmp/
 temp/
 *.ogg

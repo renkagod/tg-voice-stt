@@ -35,4 +35,40 @@ if ALLOWED_USERS_RAW:
             print(f"Warning: Invalid user ID '{user_id}' in ALLOWED_USERS. Skipping.")
 
 # Optional configurations
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
+DEFAULT_GEMINI_MODEL = GEMINI_MODEL
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite").strip()
+GEMINI_SUMMARY_MODEL = os.getenv("GEMINI_SUMMARY_MODEL", "gemini-3.5-flash-lite").strip()
+
+import json
+SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
+
+def load_user_settings() -> dict:
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_user_settings(settings: dict):
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Error saving settings: {e}")
+
+def get_user_model(user_id: int) -> str:
+    settings = load_user_settings()
+    user_str = str(user_id)
+    return settings.get(user_str, {}).get("model", DEFAULT_GEMINI_MODEL)
+
+def set_user_model(user_id: int, model: str):
+    settings = load_user_settings()
+    user_str = str(user_id)
+    if user_str not in settings:
+        settings[user_str] = {}
+    settings[user_str]["model"] = model
+    save_user_settings(settings)
+

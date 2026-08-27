@@ -5,12 +5,25 @@ import tempfile
 import hashlib
 import time
 from aiogram import Bot, Dispatcher, F, types, BaseMiddleware
+from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.client.default import DefaultBotProperties
 from aiogram.exceptions import TelegramAPIError
 
-from config import TELEGRAM_TOKEN, ALLOWED_USERS
-from transcriber import transcribe_audio_stream, summarize_and_clean_text_stream
+from config import (
+    TELEGRAM_TOKEN,
+    ALLOWED_USERS,
+    DEFAULT_GEMINI_MODEL,
+    GEMINI_FALLBACK_MODEL,
+    GEMINI_SUMMARY_MODEL,
+    get_user_model,
+    set_user_model,
+)
+from transcriber import (
+    transcribe_audio_stream,
+    summarize_and_clean_text_stream,
+    fetch_available_models,
+)
 
 # Setup logging
 logging.basicConfig(
@@ -105,6 +118,133 @@ async def update_message_stream(bot: Bot, chat_id: int, draft_id: int, text: str
             except Exception:
                 return None
 
+# Helper to build model selection inline keyboard
+def get_models_keyboard(current_model: str) -> types.InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    presets = [
+        ("gemini-3.5-flash-lite", "⚡ Gemini 3.5 Flash Lite (500 RPD)"),
+        ("gemini-3.5-transcribe", "🎙️ Gemini 3.5 Transcribe (+ фоллбек)"),
+        ("gemini-2.5-flash", "🚀 Gemini 2.5 Flash"),
+        ("gemini-3.1-flash-lite", "🔹 Gemini 3.1 Flash Lite"),
+    ]
+    for model_id, label in presets:
+        prefix = "✅ " if model_id == current_model else ""
+        builder.button(text=f"{prefix}{label}", callback_data=f"set_model:{model_id}")
+    builder.button(text="🔄 Список моделей из Google API", callback_data="fetch_api_models:0")
+    builder.adjust(1)
+    return builder.as_markup()
+
+# Handler for /model and /settings commands
+@dp.message(Command("start", "model", "settings", "help"))
+async def handle_model_command(message: types.Message):
+    user_model = get_user_model(message.from_user.id)
+    text = (
+        f"⚙️ *Настройки модели распознавания*\n\n"
+        f"Текущая активная модель: `{user_model}`\n\n"
+        f"Выберите модель для распознавания:\n"
+        f"• *Gemini 3.5 Flash Lite:* универсальная и быстрая (лимит 500 запросов в день).\n"
+        f"• *Gemini 3.5 Transcribe:* специализированная модель распознавания речи (25 RPD). При исчерпании лимитов автоматически переключится на `{GEMINI_FALLBACK_MODEL}`.\n\n"
+        f"💡 Кнопка саммари и очистки текста всегда использует `{GEMINI_SUMMARY_MODEL}`."
+    )
+    await message.reply(text, reply_markup=get_models_keyboard(user_model), parse_mode="Markdown")
+
+# Callback handler for setting model
+@dp.callback_query(F.data.startswith("set_model:"))
+async def handle_set_model(callback_query: types.CallbackQuery):
+    model_id = callback_query.data.split(":", 1)[1]
+    user_id = callback_query.from_user.id
+    set_user_model(user_id, model_id)
+    await callback_query.answer(f"Выбрана модель: {model_id}")
+    
+    text = (
+        f"⚙️ *Настройки модели*\n\n"
+        f"Текущая активная модель: `{model_id}`\n\n"
+        f"💡 Если выбрана `gemini-3.5-transcribe`, при исчерпании лимитов (429) "
+        f"бот автоматически выполнит фоллбек на `{GEMINI_FALLBACK_MODEL}`.\n"
+        f"Кнопка саммари использует `{GEMINI_SUMMARY_MODEL}`."
+    )
+    try:
+        await callback_query.message.edit_text(
+            text,
+            reply_markup=get_models_keyboard(model_id),
+            parse_mode="Markdown"
+        )
+    except TelegramAPIError:
+        pass
+
+# Callback handler for back to presets
+@dp.callback_query(F.data == "back_to_presets")
+async def handle_back_to_presets(callback_query: types.CallbackQuery):
+    await callback_query.answer()
+    user_model = get_user_model(callback_query.from_user.id)
+    text = (
+        f"⚙️ *Настройки модели*\n\n"
+        f"Текущая активная модель: `{user_model}`\n\n"
+        f"💡 Если выбрана `gemini-3.5-transcribe`, при исчерпании лимитов (429) "
+        f"бот автоматически выполнит фоллбек на `{GEMINI_FALLBACK_MODEL}`.\n"
+        f"Кнопка саммари использует `{GEMINI_SUMMARY_MODEL}`."
+    )
+    try:
+        await callback_query.message.edit_text(
+            text,
+            reply_markup=get_models_keyboard(user_model),
+            parse_mode="Markdown"
+        )
+    except TelegramAPIError:
+        pass
+
+# Callback handler for fetching dynamic models from Google API
+@dp.callback_query(F.data.startswith("fetch_api_models:"))
+async def handle_fetch_api_models(callback_query: types.CallbackQuery):
+    await callback_query.answer("Запрашиваю модели из Gemini API...")
+    page = int(callback_query.data.split(":")[1])
+    try:
+        models = await fetch_available_models()
+        user_model = get_user_model(callback_query.from_user.id)
+        
+        builder = InlineKeyboardBuilder()
+        page_size = 5
+        total_pages = (len(models) + page_size - 1) // page_size if models else 1
+        page = max(0, min(page, total_pages - 1))
+        
+        start = page * page_size
+        end = start + page_size
+        current_page_models = models[start:end]
+        
+        for m in current_page_models:
+            mid = m["id"]
+            prefix = "✅ " if mid == user_model else ""
+            name = m.get("displayName") or mid
+            builder.button(text=f"{prefix}{name[:32]}", callback_data=f"set_model:{mid}")
+        
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"fetch_api_models:{page-1}"))
+        if page < total_pages - 1:
+            nav_buttons.append(types.InlineKeyboardButton(text="Вперед ➡️", callback_data=f"fetch_api_models:{page+1}"))
+        
+        builder.adjust(1)
+        if nav_buttons:
+            builder.row(*nav_buttons)
+        builder.row(types.InlineKeyboardButton(text="🔙 К пресетам", callback_data="back_to_presets"))
+        
+        text = (
+            f"📋 *Доступные модели в вашем Google AI Studio* (Стр. {page+1}/{total_pages}):\n\n"
+            f"Текущая активная: `{user_model}`\n"
+            f"Нажмите на модель, чтобы переключиться:"
+        )
+        try:
+            await callback_query.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+        except TelegramAPIError:
+            pass
+    except Exception as e:
+        logger.error(f"Error fetching models: {e}")
+        await callback_query.message.edit_text(
+            f"❌ Ошибка при запросе моделей из API: `{e}`",
+            reply_markup=get_models_keyboard(get_user_model(callback_query.from_user.id)),
+            parse_mode="Markdown"
+        )
+
 # Handler for Voice Messages
 @dp.message(F.voice)
 async def handle_voice_message(message: types.Message):
@@ -124,12 +264,13 @@ async def handle_voice_message(message: types.Message):
         temp_ogg_path = temp_ogg.name
     
     try:
+        user_model = get_user_model(message.from_user.id)
         # Download
         file_info = await bot.get_file(voice.file_id)
         await bot.download_file(file_info.file_path, temp_ogg_path)
         
         # Update status
-        await status_msg.edit_text("🎙️ *Transcribing audio... (Gemini)*", parse_mode="Markdown")
+        await status_msg.edit_text(f"🎙️ *Transcribing audio... ({user_model})*", parse_mode="Markdown")
         
         # Read the audio bytes
         with open(temp_ogg_path, "rb") as f:
@@ -143,7 +284,7 @@ async def handle_voice_message(message: types.Message):
         edit_interval = 1.5  # Rate limit safety buffer
         status_deleted = False
         
-        async for chunk in transcribe_audio_stream(audio_bytes, mime_type="audio/ogg"):
+        async for chunk in transcribe_audio_stream(audio_bytes, mime_type="audio/ogg", model_name=user_model):
             if not chunk:
                 continue
                 
@@ -280,12 +421,13 @@ async def handle_video_or_audio_message(message: types.Message):
     os.close(fd_wav)
     
     try:
+        user_model = get_user_model(message.from_user.id)
         # Download
         file_info = await bot.get_file(media_obj.file_id)
         await bot.download_file(file_info.file_path, temp_mp4_path)
         
         # Update status
-        await status_msg.edit_text("🎙️ *Extracting and transcribing audio... (Gemini)*", parse_mode="Markdown")
+        await status_msg.edit_text(f"🎙️ *Extracting and transcribing audio... ({user_model})*", parse_mode="Markdown")
         
         # Extract audio using ffmpeg
         conversion_success = await extract_audio_from_mp4(temp_mp4_path, temp_wav_path)
@@ -308,7 +450,7 @@ async def handle_video_or_audio_message(message: types.Message):
         edit_interval = 1.5
         status_deleted = False
         
-        async for chunk in transcribe_audio_stream(audio_bytes, mime_type=mime_type):
+        async for chunk in transcribe_audio_stream(audio_bytes, mime_type=mime_type, model_name=user_model):
             if not chunk:
                 continue
                 

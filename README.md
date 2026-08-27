@@ -8,8 +8,10 @@ An asynchronous, lightweight Telegram bot utility for high-speed transcription o
 
 | Feature | Description |
 |---------|-------------|
-| **Silent Mode** | Ignores all text and media messages, responding only to voice and video notes. |
+| **Silent Mode** | Ignores regular text and media, responding only to voice, video notes, and the `/model` configuration command. |
 | **Security Whitelist** | Restricts access to a set of pre-approved Telegram User IDs. Non-whitelisted users are silently ignored. |
+| **Model Selection** | Switch between models directly in Telegram using `/model` (with dynamic model fetching from Google AI Studio). |
+| **Automatic Quota Fallback** | Seamlessly falls back to `gemini-3.5-flash-lite` if the primary model (e.g. `gemini-3.5-transcribe`) hits rate limits or error 429. |
 | **Low Latency** | Built on fully asynchronous Python (`aiogram` + `aiohttp`) with direct REST calls to Gemini to avoid library overhead. |
 | **Native Streaming** | Streams transcription updates in real-time using Telegram's native draft mechanism (`sendMessageDraft`) with safe rate-limited fallback. |
 | **High Fidelity STT** | Transcribes audio with pauses formatted as `...` and non-verbal actions (e.g. `[sighs]`, `[laughs]`) in brackets. |
@@ -29,7 +31,9 @@ flowchart TD
     Download -->|Voice Message .ogg| Direct[Use directly]
     FFmpeg --> SendGemini[Send audio bytes inline to Gemini]
     Direct --> SendGemini
-    SendGemini -->|Verbatim transcription| Reply[Reply with text + Inline Button]
+    SendGemini -->|Quota limit 429?| Fallback[Auto fallback to Flash Lite]
+    Fallback --> Reply[Reply with text + Inline Button]
+    SendGemini -->|Verbatim transcription| Reply
     Reply --> Click[Click 'Clean & Summarize']
     Click --> GeminiClean[Send text to Gemini for cleanup & summary]
     GeminiClean --> Edit[Edit message to append clean text & summary]
@@ -60,7 +64,7 @@ Edit the `.env` file:
 TELEGRAM_TOKEN=your_telegram_bot_token
 GEMINI_API_KEY=your_gemini_api_key
 ALLOWED_USERS=123456789,987654321
-GEMINI_MODEL=gemini-3.1-flash-lite
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 ### 4. Deploy via Docker Compose
@@ -100,7 +104,9 @@ docker compose down
 | `TELEGRAM_TOKEN` | Telegram Bot Token from @BotFather | *Required* |
 | `GEMINI_API_KEY` | API Key from Google AI Studio | *Required* |
 | `ALLOWED_USERS` | Comma-separated list of approved Telegram User IDs | *Required* |
-| `GEMINI_MODEL` | The Google Gemini model to use for STT and editing | `gemini-3.1-flash-lite` |
+| `GEMINI_MODEL` | Default Gemini model for STT and editing | `gemini-3.5-flash-lite` |
+| `GEMINI_FALLBACK_MODEL` | Fallback model when primary hits rate limits | `gemini-3.5-flash-lite` |
+| `GEMINI_SUMMARY_MODEL` | Text model used for the Clean & Summarize action | `gemini-3.5-flash-lite` |
 
 ## License
 
@@ -114,8 +120,10 @@ docker compose down
 
 ### Возможности
 
-- **Тихий режим (No Chatbot):** Бот полностью игнорирует текстовые сообщения и реагирует исключительно на голосовые (voice) и кружочки (video_note).
+- **Тихий режим (No Chatbot):** Бот полностью игнорирует посторонние текстовые сообщения и реагирует исключительно на голосовые (voice), кружочки (video_note) и команду `/model`.
 - **Безопасность (Whitelist):** Белый список разрешенных Telegram ID в `.env`. Сообщения от посторонних пользователей полностью игнорируются (без ответа).
+- **Смена модели из Telegram:** Команда `/model` позволяет на лету переключать используемую модель и динамически загружать список моделей из Google AI Studio API.
+- **Автоматический фоллбек при исчерпании лимитов:** Если выбрана специализированная модель `gemini-3.5-transcribe` и исчерпана суточная квота (ошибка 429), бот прозрачно переключается на `gemini-3.5-flash-lite`.
 - **Минимальная задержка:** Использование асинхронного `aiogram` и прямых REST-запросов к Gemini без лишних оберток.
 - **Нативный стриминг:** Вывод текста в реальном времени через черновики Telegram (`sendMessageDraft`) с безопасным лимитированным переключением на редактирование при необходимости.
 - **Высокая детализация STT:** Фиксация пауз и заминок в виде `...`, а также невербальных звуков (вздохи, смех и др.) в скобках вроде `[sighs]`.
@@ -147,7 +155,7 @@ cp .env.example .env
 TELEGRAM_TOKEN=ваш_токен_телеграм
 GEMINI_API_KEY=ваш_ключ_gemini
 ALLOWED_USERS=123456789,987654321
-GEMINI_MODEL=gemini-3.1-flash-lite
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 #### 4. Запуск через Docker Compose
@@ -187,7 +195,9 @@ docker compose down
 | `TELEGRAM_TOKEN` | Токен Telegram-бота | *Обязательно* |
 | `GEMINI_API_KEY` | Ключ Gemini API | *Обязательно* |
 | `ALLOWED_USERS` | Список разрешенных Telegram ID через запятую | *Обязательно* |
-| `GEMINI_MODEL` | Модель Google Gemini для STT и редактирования | `gemini-3.1-flash-lite` |
+| `GEMINI_MODEL` | Модель Google Gemini по умолчанию для STT и редактирования | `gemini-3.5-flash-lite` |
+| `GEMINI_FALLBACK_MODEL` | Резервная модель при исчерпании квот (ошибке 429) | `gemini-3.5-flash-lite` |
+| `GEMINI_SUMMARY_MODEL` | Текстовая модель для кнопки «Clean & Summarize» | `gemini-3.5-flash-lite` |
 
 ### Лицензия
 
