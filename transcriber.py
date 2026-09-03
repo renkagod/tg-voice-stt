@@ -12,6 +12,8 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=120)
+
 async def fetch_available_models() -> List[Dict[str, Any]]:
     """
     Fetches the list of available models from Google Gemini API.
@@ -20,7 +22,7 @@ async def fetch_available_models() -> List[Dict[str, Any]]:
         raise ValueError("GEMINI_API_KEY is not configured.")
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=DEFAULT_TIMEOUT) as session:
         async with session.get(url) as response:
             if response.status != 200:
                 error_text = await response.text()
@@ -88,7 +90,7 @@ async def _stream_gemini_content(model: str, audio_bytes: bytes, mime_type: str)
     }
     
     logger.info(f"Initiating transcription stream from Gemini model: {model}...")
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=DEFAULT_TIMEOUT) as session:
         async with session.post(url, headers=headers, json=payload) as response:
             if response.status != 200:
                 error_text = await response.text()
@@ -128,7 +130,7 @@ async def _transcribe_interactions(model: str, audio_bytes: bytes, mime_type: st
             }
         ]
     }
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=DEFAULT_TIMEOUT) as session:
         async with session.post(url, headers=headers, json=payload) as response:
             if response.status != 200:
                 error_text = await response.text()
@@ -178,7 +180,7 @@ async def transcribe_audio(audio_bytes: bytes, mime_type: str, model_name: Optio
 async def transcribe_audio_stream(audio_bytes: bytes, mime_type: str, model_name: Optional[str] = None):
     """
     Yields chunks of transcription text from Gemini in real-time.
-    If the primary model fails (e.g. rate limit 429 or quota exceeded),
+    If the primary model fails (e.g. rate limit 429 or quota exceeded) before yielding,
     automatically falls back to GEMINI_FALLBACK_MODEL.
     """
     if not GEMINI_API_KEY:
@@ -187,6 +189,7 @@ async def transcribe_audio_stream(audio_bytes: bytes, mime_type: str, model_name
     primary_model = (model_name or DEFAULT_GEMINI_MODEL).strip()
     fallback_model = GEMINI_FALLBACK_MODEL.strip()
 
+    yielded_any = False
     try:
         if "transcribe" in primary_model.lower() and "flash" not in primary_model.lower():
             try:
@@ -196,16 +199,18 @@ async def transcribe_audio_stream(audio_bytes: bytes, mime_type: str, model_name
             except Exception as e:
                 logger.warning(f"Interactions API with {primary_model} failed: {e}. Trying streamGenerateContent...")
                 async for chunk in _stream_gemini_content(primary_model, audio_bytes, mime_type):
+                    yielded_any = True
                     yield chunk
                 return
         else:
             async for chunk in _stream_gemini_content(primary_model, audio_bytes, mime_type):
+                yielded_any = True
                 yield chunk
             return
     except Exception as e:
-        if primary_model != fallback_model:
+        if primary_model != fallback_model and not yielded_any:
             logger.warning(
-                f"Primary model '{primary_model}' transcription failed: {e}. "
+                f"Primary model '{primary_model}' transcription failed before output: {e}. "
                 f"Falling back to '{fallback_model}'..."
             )
             async for chunk in _stream_gemini_content(fallback_model, audio_bytes, mime_type):
@@ -283,7 +288,7 @@ async def summarize_and_clean_text_stream(verbatim_text: str, model_name: Option
     }
     
     logger.info(f"Initiating summary stream from Gemini model: {model}...")
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=DEFAULT_TIMEOUT) as session:
         async with session.post(url, headers=headers, json=payload) as response:
             if response.status != 200:
                 error_text = await response.text()
