@@ -83,7 +83,7 @@ class AccessMiddleware(BaseMiddleware):
                     text = (
                         "👋 Чтобы пользоваться ботом, внесите свой ключ Google Gemini API в общую казну.\n\n"
                         "Команда для добавления:\n"
-                        "`/key <ваш_ключ>`\n\n"
+                        "/key <ваш_ключ>\n\n"
                         "Получить бесплатный ключ можно тут: https://aistudio.google.com/"
                     )
                     await event.reply(text, parse_mode="Markdown", disable_web_page_preview=True)
@@ -185,9 +185,9 @@ async def handle_start_command(message: types.Message):
         "Бот работает по принципу общего пула. Каждый пользователь вносит свой бесплатный API-ключ Gemini, "
         "и все ключи распределяют нагрузку между собой.\n\n"
         "📌 *Команды:*\n"
-        "• `/key <ваш_ключ>` — добавить ключ в казну и активировать доступ\n"
-        "• `/key` — проверить состояние казны и своих ключей\n"
-        "• `/revoke` — отозвать все свои ключи и закрыть доступ\n\n"
+        "• /key <ваш_ключ> — добавить ключ в казну и активировать доступ\n"
+        "• /key — проверить состояние казны и своих ключей\n"
+        "• /revoke — отозвать все свои ключи и закрыть доступ\n\n"
         "🔗 Получить бесплатный ключ Google Gemini API: https://aistudio.google.com/"
     )
     await message.reply(text, parse_mode="Markdown", disable_web_page_preview=True)
@@ -216,8 +216,8 @@ async def handle_key_command(message: types.Message):
             f"• В кулдауне (429): {status['on_cooldown']}\n\n"
             f"🔑 *Ваши ключи в казне:*\n"
             f"{user_keys_text}\n"
-            f"💡 Чтобы добавить еще ключ: `/key <ваш_ключ>`\n"
-            f"💡 Чтобы отозвать свои ключи: `/revoke`"
+            f"💡 Чтобы добавить еще ключ: /key <ваш_ключ>\n"
+            f"💡 Чтобы отозвать свои ключи: /revoke"
         )
         await message.reply(text, parse_mode="Markdown")
 
@@ -333,7 +333,7 @@ async def execute_transcription_with_failover(
         if not api_key:
             err_text = (
                 "⚠️ Все ключи в казне временно исчерпали лимиты (429). "
-                "Подождите 1–2 минуты или добавьте рабочий ключ через `/key <ключ>`."
+                "Подождите 1–2 минуты или добавьте рабочий ключ через /key <ключ>."
             )
             try:
                 await status_msg.edit_text(err_text, parse_mode="Markdown")
@@ -367,7 +367,7 @@ async def execute_transcription_with_failover(
                                 f"⚠️ Ваш API-ключ Gemini (`{masked}`) перестал работать (код {e.status_code}) "
                                 f"и был отозван из казны.\n\n"
                                 f"Чтобы сохранить доступ к боту, привяжите новый ключ через команду:\n"
-                                f"`/key <новый_ключ>`"
+                                f"/key <новый_ключ>"
                             ),
                             parse_mode="Markdown"
                         )
@@ -567,7 +567,7 @@ async def handle_summarize_callback(callback_query: types.CallbackQuery):
                                 f"⚠️ Ваш API-ключ Gemini (`{masked}`) перестал работать (код {e.status_code}) "
                                 f"и был отозван из казны.\n\n"
                                 f"Чтобы сохранить доступ к боту, привяжите новый ключ через команду:\n"
-                                f"`/key <новый_ключ>`"
+                                f"/key <новый_ключ>"
                             ),
                             parse_mode="Markdown"
                         )
