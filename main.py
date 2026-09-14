@@ -77,8 +77,12 @@ class AccessMiddleware(BaseMiddleware):
             if event.text and event.text.startswith("/"):
                 return await handler(event, data)
 
-            # Check voice / video notes
-            if event.voice or event.video_note:
+            # Check voice / video notes / audio files up to 20MB
+            is_media = bool(
+                event.voice or event.video_note or event.audio or
+                (event.document and event.document.mime_type and event.document.mime_type.startswith("audio/"))
+            )
+            if is_media:
                 if not has_access(user.id, ADMIN_USERS):
                     text = (
                         "👋 Чтобы пользоваться ботом, внесите свой ключ Google Gemini API в общую казну.\n\n"
@@ -179,8 +183,8 @@ async def update_message_stream(
 @dp.message(Command("start", "help"))
 async def handle_start_command(message: types.Message):
     text = (
-        "🎙️ *Telegram Voice STT & Summary Bot*\n\n"
-        "Бот для мгновенной расшифровки голосовых сообщений и кружочков с помощью Google Gemini.\n\n"
+        "🎙️ *Telegram Voice & Media STT Bot*\n\n"
+        "Бот для мгновенной расшифровки голосовых сообщений, кружочков и медиафайлов (до 20 МБ) с помощью Google Gemini.\n\n"
         "🏛 *Общая казна ключей:*\n"
         "Бот работает по принципу общего пула. Каждый пользователь вносит свой бесплатный API-ключ Gemini, "
         "и все ключи распределяют нагрузку между собой.\n\n"
@@ -387,16 +391,28 @@ async def execute_transcription_with_failover(
     except Exception:
         pass
 
-# Handler for voice and video note messages
-@dp.message(F.voice | F.video_note)
-async def handle_voice_message(message: types.Message):
+# Handler for voice, video note, and audio media messages
+@dp.message(F.voice | F.video_note | F.audio | (F.document & F.document.mime_type.startswith("audio/")))
+async def handle_media_message(message: types.Message):
     # Ignore replies to bot messages
     if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
-        logger.info("Ignoring voice/video note sent in reply to bot message.")
+        logger.info("Ignoring media sent in reply to bot message.")
         return
 
-    is_video_note = bool(message.video_note)
-    file_id = message.video_note.file_id if is_video_note else message.voice.file_id
+    # Check 20 MB size limit
+    file_size = 0
+    if message.voice:
+        file_size = message.voice.file_size or 0
+    elif message.video_note:
+        file_size = message.video_note.file_size or 0
+    elif message.audio:
+        file_size = message.audio.file_size or 0
+    elif message.document:
+        file_size = message.document.file_size or 0
+
+    if file_size > 20 * 1024 * 1024:
+        await message.reply("❌ Файл слишком большой. Telegram разрешает ботам скачивать файлы размером до 20 МБ.")
+        return
 
     # Send initial status indicator
     status_msg = await message.reply("⏳ Listening...")
@@ -404,18 +420,32 @@ async def handle_voice_message(message: types.Message):
     temp_input_path = ""
     temp_wav_path = ""
     try:
-        file = await bot.get_file(file_id)
-        if not file.file_path:
-            await status_msg.edit_text("❌ Failed to download audio file.")
+        if message.video_note:
+            file_id = message.video_note.file_id
+            ext = ".mp4"
+        elif message.voice:
+            file_id = message.voice.file_id
+            ext = ".ogg"
+        elif message.audio:
+            file_id = message.audio.file_id
+            ext = os.path.splitext(message.audio.file_name or ".mp3")[1] or ".mp3"
+        elif message.document:
+            file_id = message.document.file_id
+            ext = os.path.splitext(message.document.file_name or ".mp3")[1] or ".mp3"
+        else:
             return
 
-        ext = ".mp4" if is_video_note else ".ogg"
+        file = await bot.get_file(file_id)
+        if not file.file_path:
+            await status_msg.edit_text("❌ Failed to download media file.")
+            return
+
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as temp_in:
             temp_input_path = temp_in.name
 
         await bot.download_file(file.file_path, destination=temp_input_path)
 
-        if is_video_note:
+        if message.video_note:
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_out:
                 temp_wav_path = temp_out.name
             
@@ -427,10 +457,24 @@ async def handle_voice_message(message: types.Message):
             with open(temp_wav_path, "rb") as f:
                 audio_bytes = f.read()
             mime_type = "audio/wav"
-        else:
+        elif message.voice:
             with open(temp_input_path, "rb") as f:
                 audio_bytes = f.read()
             mime_type = "audio/ogg"
+        else:
+            with open(temp_input_path, "rb") as f:
+                audio_bytes = f.read()
+            mime_type = "audio/mpeg"
+            if message.audio and message.audio.mime_type:
+                mime_type = message.audio.mime_type
+            elif message.document and message.document.mime_type:
+                mime_type = message.document.mime_type
+            elif ext.lower() == ".wav":
+                mime_type = "audio/wav"
+            elif ext.lower() in (".m4a", ".mp4"):
+                mime_type = "audio/mp4"
+            elif ext.lower() == ".ogg":
+                mime_type = "audio/ogg"
 
         await execute_transcription_with_failover(
             message=message,
