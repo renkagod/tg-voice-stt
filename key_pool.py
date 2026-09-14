@@ -15,16 +15,26 @@ def get_db_path() -> str:
     from config import DB_PATH
     return DB_PATH or DEFAULT_DB_PATH
 
+_fallback_db_path: Optional[str] = None
+
 @contextmanager
 def get_db():
-    db_path = get_db_path()
+    global _fallback_db_path
+    db_path = _fallback_db_path or get_db_path()
     db_dir = os.path.dirname(db_path)
     if db_dir and not os.path.exists(db_dir):
         try:
             os.makedirs(db_dir, exist_ok=True)
         except Exception as e:
             logger.warning(f"Could not create database directory {db_dir}: {e}")
-    conn = sqlite3.connect(db_path)
+    try:
+        conn = sqlite3.connect(db_path)
+    except sqlite3.OperationalError as e:
+        import tempfile
+        _fallback_db_path = os.path.join(tempfile.gettempdir(), "keys.db")
+        logger.warning(f"Could not open SQLite database at '{db_path}': {e}. Falling back to '{_fallback_db_path}'.")
+        conn = sqlite3.connect(_fallback_db_path)
+
     conn.row_factory = sqlite3.Row
     try:
         yield conn

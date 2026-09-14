@@ -7,10 +7,13 @@ services:
     tmpfs:
       - /tmp
     volumes:
-      - ./data:/app/data
+      - bot_data:/app/data
     security_opt:
       - no-new-privileges:true
     env_file:
       - .env
     environment:
       - PYTHONDONTWRITEBYTECODE=1
+
+volumes:
+  bot_data:

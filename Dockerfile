@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY . .
 
-# Change ownership of the app directory to the botuser
-RUN chown -R botuser:botuser /app
+# Create data directory and change ownership of the app directory to botuser
+RUN mkdir -p /app/data && chown -R botuser:botuser /app
 
 # Switch to the non-privileged user
 USER botuser

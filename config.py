@@ -1,4 +1,5 @@
 import os
+import tempfile
 from dotenv import load_dotenv
 
 # Load .env file
@@ -30,17 +31,31 @@ DEFAULT_GEMINI_MODEL = GEMINI_MODEL
 GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite").strip()
 GEMINI_SUMMARY_MODEL = os.getenv("GEMINI_SUMMARY_MODEL", "gemini-3.5-flash-lite").strip()
 
-# Database path for SQLite key pool
+# Database path for SQLite key pool with write permission validation
+def _is_dir_writable(path: str) -> bool:
+    try:
+        os.makedirs(path, exist_ok=True)
+        test_file = os.path.join(path, ".test_write")
+        with open(test_file, "w") as f:
+            f.write("1")
+        os.remove(test_file)
+        return True
+    except Exception:
+        return False
+
 def _get_default_db_path() -> str:
     env_path = os.getenv("DB_PATH")
     if env_path:
-        return env_path
+        d = os.path.dirname(os.path.abspath(env_path))
+        if _is_dir_writable(d):
+            return env_path
+
+    # Check /app/data or local data/
     data_dir = os.path.join(os.path.dirname(__file__), "data")
-    try:
-        os.makedirs(data_dir, exist_ok=True)
+    if _is_dir_writable(data_dir):
         return os.path.join(data_dir, "keys.db")
-    except Exception:
-        import tempfile
-        return os.path.join(tempfile.gettempdir(), "keys.db")
+
+    # Fallback to temp directory (guaranteed writable tmpfs in Docker)
+    return os.path.join(tempfile.gettempdir(), "keys.db")
 
 DB_PATH = _get_default_db_path()
