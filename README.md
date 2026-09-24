@@ -2,145 +2,108 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An asynchronous, lightweight Telegram bot utility for high-speed transcription of voice messages and video notes ("circles") using Google Gemini API, with a crowdsourced API key pool ("Shared Treasury") and a one-click inline button to clean up filler words and generate summaries.
+Асинхронный Telegram-бот для быстрой расшифровки голосовых сообщений и видео-кружочков через Gemini API, с краудсорсинговым пулом API-ключей и очисткой текста с саммари по кнопке.
 
-## Features
+## Особенности
 
-| Feature | Description |
-|---------|-------------|
-| **Silent Mode** | Ignores regular text and media in private chats. Group messages are ignored completely. |
-| **Shared Key Pool (Crowdsourcing)** | Open access: users submit their free Gemini API key via `/key <key>` to unlock bot access. All valid keys are rotated (round-robin) across all bot users. |
-| **Failover & Key Health** | Transparent failover: on rate limit (429), key is placed on a 60s cooldown; on fatal errors (400/403), key is revoked, owner is notified in DM, and the request is transparently retried with another key. |
-| **Static Model Config** | Models are configured strictly via `.env` (`GEMINI_MODEL`, `GEMINI_SUMMARY_MODEL`), eliminating complex UI switching. |
-| **Low Latency** | Built on fully asynchronous Python (`aiogram` + `aiohttp`) with direct REST calls to Gemini to avoid library overhead. |
-| **Native Streaming** | Streams transcription updates in real-time using Telegram's native draft mechanism (`sendMessageDraft`) with safe rate-limited fallback. |
-| **High Fidelity STT** | Transcribes audio with pauses formatted as `...` and non-verbal actions (e.g. `[sighs]`, `[laughs]`) in brackets. |
-| **Smart Summary** | Verbatim transcription is sent immediately. An inline button triggers Gemini to clean up filler words (preserving slang, tone, and vocabulary) and format a structured summary. |
-| **Reply Bypass** | Ignores voice/video notes sent in reply to the bot's messages, allowing you to read the cleaned text and record a new clean voice track in the same chat. |
-| **Hardened Docker** | Read-only container root filesystem with memory-based `tmpfs` and mounted SQLite volume (`./data:/app/data`) for key persistence. |
+- Тихий режим — бот игнорирует обычные текстовые сообщения и медиа в личных чатах; в группах не отвечает вовсе
+- Общий пул ключей («казна») — доступ открывается, когда пользователь добавляет свой бесплатный ключ Gemini через `/key <ключ>`; все ключи используются по кругу (round-robin)
+- Отказоустойчивость — при ошибке 429 ключ уходит в 60-секундный кулдаун и запрос повторяется с другим ключом; при 400/403 ключ отзывается, владельцу приходит уведомление в личку, а запрос тоже повторяется с другим ключом
+- Модели заданы статически через `.env` (`GEMINI_MODEL`, `GEMINI_SUMMARY_MODEL`) — без переключения из интерфейса
+- Асинхронная архитектура на `aiogram` + `aiohttp`, прямые REST-запросы к Gemini без лишних обёрток
+- Потоковый вывод расшифровки в реальном времени через нативные черновики Telegram (`sendMessageDraft`) с фолбэком на редактирование сообщения
+- Расшифровка с паузами (`...`) и невербальными звуками в квадратных скобках (например, `[sighs]`, `[laughs]`)
+- Очистка текста и саммари по кнопке — расшифровка приходит сразу, кнопка «Clean & Summarize» убирает слова-паразиты (сохраняя сленг и тон) и добавляет структурированную выжимку
+- Игнорирует голосовые и видео-кружочки, отправленные в ответ на сообщение бота, — можно спокойно перезаписать чистовик в том же чате
+- Хардened Docker-образ: read-only контейнер, непривилегированный пользователь, volume для базы ключей
 
-## Architecture
+## Требования
+
+- Docker и Docker Compose v2 (либо Python 3.10+ и `ffmpeg` локально)
+- Токен Telegram-бота от [@BotFather](https://t.me/BotFather)
+- Ключ Google Gemini API из [Google AI Studio](https://aistudio.google.com/)
+
+## Быстрый старт
+
+1. Клонируйте репозиторий:
+
+   ```bash
+   git clone https://github.com/renkagod/tg-voice-stt.git
+   cd tg-voice-stt
+   ```
+
+2. Настройте окружение:
+
+   ```bash
+   cp .env.example .env
+   # TELEGRAM_TOKEN, GEMINI_API_KEY, ALLOWED_USERS
+   ```
+
+3. Запуск:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+Локально без Docker: `pip install -r requirements.txt`, затем `python main.py` (нужен установленный `ffmpeg`).
+
+## Команды
+
+| Команда | Описание |
+|---------|----------|
+| `/start`, `/help` | Инструкция по получению ключа Gemini и использованию бота |
+| `/key <ключ>` | Проверить и добавить ключ Gemini в пул, активировать доступ |
+| `/key` | Статистика пула (активные ключи, кулдаун) и список своих ключей |
+| `/revoke` | Отозвать все свои ключи и приостановить доступ к боту |
+
+## Конфигурация (`.env`)
+
+| Переменная | Обязательна | Описание |
+|------------|--------------|----------|
+| `TELEGRAM_TOKEN` | да | Токен бота от @BotFather |
+| `GEMINI_API_KEY` | нет | Базовый ключ, которым «казна» засевается при старте; без него пул стартует пустым и работает только за счёт ключей, добавленных через `/key` |
+| `ALLOWED_USERS` | нет | ID администраторов через запятую — доступ без своего ключа |
+| `GEMINI_MODEL` | нет | Модель для расшифровки (по умолчанию `gemini-3.5-flash-lite`) |
+| `GEMINI_FALLBACK_MODEL` | нет | Резервная модель при ошибках основной (по умолчанию `gemini-3.5-flash-lite`) |
+| `GEMINI_SUMMARY_MODEL` | нет | Модель для очистки текста и саммари (по умолчанию `gemini-3.5-flash-lite`) |
+| `DB_PATH` | нет | Путь к SQLite базе пула ключей (по умолчанию `data/keys.db`) |
+
+## Docker
+
+`docker-compose.yml` запускает контейнер с `read_only: true` и `tmpfs` на `/tmp`; SQLite-база пула ключей хранится в именованном volume `bot_data` (`/app/data`) и переживает пересборку контейнера. Включён `no-new-privileges`, процесс бота работает от непривилегированного пользователя (см. `Dockerfile`).
+
+```bash
+docker compose up -d --build   # запуск
+docker compose logs -f         # логи
+docker compose down            # остановка (volume bot_data сохраняется)
+```
+
+## Архитектура
 
 ```mermaid
 flowchart TD
-    User([Telegram User in DM]) -->|Voice / Video Note| Bot[Telegram Bot]
-    Bot -->|Check Access| Access{Admin or has active key?}
-    Access -->|No| PromptKey[Reply with AI Studio link & /key instruction]
-    Access -->|Yes| FetchKey[Get next active key from SQLite pool]
-    FetchKey -->|No active keys?| Exhausted[Reply: Quota exhausted, wait 1-2m]
-    FetchKey -->|Key ready| Download[Download file & extract audio]
-    Download --> SendGemini[Send audio to Gemini API]
-    SendGemini -->|Error 429?| Cooldown[Put key on 60s cooldown & retry next key]
+    User([Пользователь в личке Telegram]) -->|Voice / Video Note| Bot[Telegram-бот]
+    Bot -->|Проверка доступа| Access{Админ или есть активный ключ?}
+    Access -->|Нет| PromptKey[Ссылка на AI Studio и инструкция /key]
+    Access -->|Да| FetchKey[Взять следующий активный ключ из SQLite-пула]
+    FetchKey -->|Нет активных ключей?| Exhausted[Ответ: лимиты исчерпаны, подождите 1-2 мин]
+    FetchKey -->|Ключ готов| Download[Скачать файл и извлечь аудио]
+    Download --> SendGemini[Отправить аудио в Gemini API]
+    SendGemini -->|Ошибка 429?| Cooldown[Кулдаун ключа на 60с и повтор с другим]
     Cooldown --> FetchKey
-    SendGemini -->|Error 400/403?| Revoke[Revoke key, notify owner & retry next key]
+    SendGemini -->|Ошибка 400/403?| Revoke[Отозвать ключ, уведомить владельца и повторить с другим]
     Revoke --> FetchKey
-    SendGemini -->|Success| StreamDraft[Stream draft & reply with Clean button]
-    StreamDraft --> Click[Click 'Clean & Summarize']
-    Click --> GeminiClean[Send text to Gemini for cleanup & summary]
-    GeminiClean --> Edit[Edit message to append clean text & summary]
+    SendGemini -->|Успех| StreamDraft[Стрим черновика и кнопка «Очистить»]
+    StreamDraft --> Click[Нажатие «Clean & Summarize»]
+    Click --> GeminiClean[Отправить текст в Gemini на очистку и саммари]
+    GeminiClean --> Edit[Дописать в сообщение очищенный текст и саммари]
 ```
 
-## Commands
+## Ограничения
 
-- `/start` or `/help` — Instructions on getting a Gemini key and using the bot.
-- `/key <your_key>` — Validate, add a Gemini API key to the pool, and activate access.
-- `/key` — View pool statistics (active keys, keys on cooldown) and your registered keys.
-- `/revoke` — Revoke all your keys from the pool and suspend bot access.
+- Файлы больше 20 МБ бот не скачивает — таково ограничение Telegram Bot API для ботов
+- `GEMINI_API_KEY` не проверяется онлайн при старте (в отличие от ключей, добавляемых через `/key`) — о его невалидности станет известно только при первом запросе к Gemini
 
-## Quick Start
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/renkagod/tg-voice-stt.git
-cd tg-voice-stt
-```
-
-### 2. Requirements
-- Docker and Docker Compose v2 (or Python 3.10+ and FFmpeg installed locally)
-- A Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
-- A Google Gemini API Key (from [Google AI Studio](https://aistudio.google.com/))
-
-### 3. Configuration
-Copy the template `.env.example` file and fill in your variables:
-
-```bash
-cp .env.example .env
-```
-
-Edit the `.env` file:
-```ini
-TELEGRAM_TOKEN=your_telegram_bot_token
-GEMINI_API_KEY=your_gemini_api_key
-ALLOWED_USERS=123456789,987654321
-GEMINI_MODEL=gemini-3.5-flash-lite
-```
-
-### 4. Deploy via Docker Compose
-
-Build and run the bot in a hardened, non-privileged, read-only Docker container:
-
-```bash
-docker compose up -d --build
-```
-
-To view the logs:
-```bash
-docker compose logs -f
-```
-
-To stop the bot:
-```bash
-docker compose down
-```
-
-### 5. Manual Deployment (Local)
-
-1. Install local dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Make sure `ffmpeg` is installed and added to your system's PATH.
-3. Start the bot:
-   ```bash
-   python main.py
-   ```
-
-## Configuration Reference
-
-| Environment Variable | Description | Default |
-|----------------------|-------------|---------|
-| `TELEGRAM_TOKEN` | Telegram Bot Token from @BotFather | *Required* |
-| `GEMINI_API_KEY` | Base system Gemini API Key seeded into the pool | *Required* |
-| `ALLOWED_USERS` | Comma-separated list of Admin Telegram IDs (access without key) | *Required* |
-| `GEMINI_MODEL` | Gemini model for STT | `gemini-3.5-flash-lite` |
-| `GEMINI_FALLBACK_MODEL` | Fallback model when primary hits rate limits | `gemini-3.5-flash-lite` |
-| `GEMINI_SUMMARY_MODEL` | Text model used for the Clean & Summarize action | `gemini-3.5-flash-lite` |
-| `DB_PATH` | Path to SQLite database for the key pool | `data/keys.db` |
-
-## License
+## Лицензия
 
 [MIT](LICENSE) — Copyright (c) 2026 [renkagod](https://github.com/renkagod).
-
----
-
-## Русский
-
-**Telegram Voice STT & Summary Bot** — это асинхронный утилитарный Telegram-бот на Python для сверхбыстрой расшифровки голосовых сообщений и видео-сообщений («кружочков») с помощью Gemini API и краудсорсинговой модели пула ключей.
-
-### Возможности
-
-- **Тихий режим (No Chatbot):** Бот полностью игнорирует посторонние текстовые сообщения и реагирует исключительно на голосовые (voice), кружочки (video_note) и команды `/key`, `/revoke`. Группы полностью игнорируются (работа только в личке).
-- **Краудсорсинговый пул ключей («Общая казна»):** Чтобы пользоваться ботом, пользователь добавляет свой бесплатный ключ Google Gemini через `/key <ключ>`. Все ключи объединяются в пул и честно распределяют нагрузку (Round-Robin).
-- **Отказоустойчивость:** При ошибке 429 ключ уходит в кулдаун на 60 секунд, а запрос подхватывается следующим ключом. При 400/403 ключ отзывается, владельцу отправляется уведомление в ЛС, а войс расшифровывается другим ключом.
-- **Статическая настройка моделей:** Модели задаются в `.env`, лишние инлайн-кнопки переключения убраны.
-- **Администраторы:** Пользователи из `ALLOWED_USERS` имеют доступ к боту без необходимости привязки личного ключа.
-- **Нативный стриминг:** Вывод текста в реальном времени через черновики Telegram (`sendMessageDraft`).
-- **Умное саммари:** Инлайн-кнопка «✨ Clean & Summarize» очищает слова-паразиты и выводит структурированную выжимку.
-- **Безопасный Docker:** Read-only контейнер с томом `./data:/app/data` для постоянного сохранения SQLite-базы ключей.
-
-### Команды
-
-- `/start` или `/help` — Справка и ссылка на получение ключа.
-- `/key <ключ>` — Проверить и добавить API-ключ в казну.
-- `/key` — Состояние казны и список своих ключей.
-- `/revoke` — Отозвать все свои ключи и закрыть доступ.
