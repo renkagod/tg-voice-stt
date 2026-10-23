@@ -1,6 +1,7 @@
 # Telegram Voice STT & Summary Bot
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Donate](https://img.shields.io/badge/Donate-crypto-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/renkagod/.github/blob/main/DONATE.md)
 
 Асинхронный Telegram-бот для быстрой расшифровки голосовых сообщений и видео-кружочков через Gemini API, с краудсорсинговым пулом API-ключей и очисткой текста с саммари по кнопке.
 
@@ -103,6 +104,10 @@ flowchart TD
 
 - Файлы больше 20 МБ бот не скачивает — таково ограничение Telegram Bot API для ботов
 - `GEMINI_API_KEY` не проверяется онлайн при старте (в отличие от ключей, добавляемых через `/key`) — о его невалидности станет известно только при первом запросе к Gemini
+
+## Поддержать проект
+
+Если проект оказался полезен, можно поддержать его криптой: [адреса для доната](https://github.com/renkagod/.github/blob/main/DONATE.md).
 
 ## Лицензия
 
