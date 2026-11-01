@@ -2,7 +2,7 @@ import base64
 import json
 import logging
 import aiohttp
-from typing import Optional
+from typing import Optional, Tuple, List
 from config import (
     GEMINI_API_KEY,
     DEFAULT_GEMINI_MODEL,
@@ -13,6 +13,22 @@ from config import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=120)
+
+NO_SPEECH = "[No speech detected]"
+# Separates the cleaned text from the summary points in the cleanup response
+SUMMARY_MARKER = "===SUMMARY==="
+
+def split_clean_and_summary(text: str) -> Tuple[str, List[str]]:
+    """
+    Splits a (possibly partial) cleanup response into cleaned text and summary points.
+    """
+    clean, _, summary = text.partition(SUMMARY_MARKER)
+    points = []
+    for line in summary.splitlines():
+        line = line.strip().lstrip("-*•—–").strip()
+        if line:
+            points.append(line)
+    return clean.strip(), points
 
 class GeminiAPIError(RuntimeError):
     def __init__(self, status_code: int, message: str):
@@ -58,7 +74,7 @@ async def _stream_gemini_content(model: str, audio_bytes: bytes, mime_type: str,
                         "- Include non-verbal sounds such as sighs, deep breaths, laughter, etc., "
                         "representing them clearly in square brackets (e.g. [sighs], [sigh], [laughs], [giggles], [gasps], [snorts]).\n\n"
                         "Output ONLY the transcription. Do not add headers, commentary, or metadata. "
-                        "If the audio is silent or contains no speech, respond with '[No speech detected]'."
+                        "If the audio is silent or contains no speech, respond with '" + NO_SPEECH + "'."
                     )
                 }
             ]
@@ -212,7 +228,7 @@ async def summarize_and_clean_text_stream(verbatim_text: str, model_name: Option
     if not key:
         raise ValueError("No Gemini API key provided.")
 
-    if not verbatim_text or verbatim_text == "[No speech detected]":
+    if not verbatim_text or verbatim_text == NO_SPEECH:
         yield "Nothing to clean and summarize."
         return
 
@@ -248,13 +264,12 @@ async def summarize_and_clean_text_stream(verbatim_text: str, model_name: Option
                         "(e.g. change 'одно, одно и то же' to 'одно и то же').\n"
                         "3. PUNCTUATION & TYPOS: Correct minor typos and adjust punctuation so the text flows naturally, without altering the actual spoken words.\n\n"
                         "TASKS:\n"
-                        "1. Output the cleaned text following the CRITICAL RULES above under the header '✍️ **Cleaned Text:**'.\n"
-                        "2. Provide a concise summary of the key points as a structured bulleted list under the header '📌 **Key Summary Points:**'.\n\n"
+                        "1. Output the cleaned text following the CRITICAL RULES above.\n"
+                        "2. Provide a concise summary of the key points: 2-5 short points, one per line.\n\n"
                         "Ensure that your response is written in the same language as the provided transcript.\n\n"
-                        "Format your response exactly as follows:\n"
-                        "✍️ **Cleaned Text:**\n"
-                        "[cleaned text]\n\n"
-                        "📌 **Key Summary Points:**\n"
+                        "Format your response exactly as follows, plain text without Markdown, headers or emoji:\n"
+                        "[cleaned text]\n"
+                        f"{SUMMARY_MARKER}\n"
                         "- [point 1]\n"
                         "- [point 2]\n\n"
                         "Do not add any greetings, preambles, or extra comments."

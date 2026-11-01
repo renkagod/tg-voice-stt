@@ -59,6 +59,10 @@ def init_pool(default_env_key: Optional[str] = None):
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_active_keys ON api_keys(is_active, cooldown_until, last_used_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_user_keys ON api_keys(user_id, is_active)")
+        # 'user' = revoked by its owner (can be restored), 'google' = rejected by the API
+        columns = {r["name"] for r in conn.execute("PRAGMA table_info(api_keys)")}
+        if "revoked_by" not in columns:
+            conn.execute("ALTER TABLE api_keys ADD COLUMN revoked_by TEXT DEFAULT ''")
         conn.commit()
 
         if default_env_key and default_env_key.strip():
@@ -87,42 +91,54 @@ async def validate_key_online(api_key: str) -> Tuple[bool, str]:
                 error_body = await response.text()
                 logger.warning(f"Key validation failed (Status {response.status}): {error_body}")
                 if response.status in (400, 403):
-                    return False, "Неверный или заблокированный API-ключ."
-                return False, f"Ошибка проверки Google API (код {response.status})."
+                    return False, "invalid"
+                return False, "check_failed"
     except Exception as e:
         logger.error(f"Key validation connection error: {e}")
-        return False, "Не удалось подключиться к серверам Google для проверки ключа."
+        return False, "check_failed"
 
 async def add_user_key(user_id: int, raw_key: str) -> Tuple[bool, str]:
     """
     Checks for duplicate, validates online, and adds key to pool.
+    Returns (success, code). Codes: added, restored, empty, mine, duplicate, invalid, check_failed.
     """
     api_key = raw_key.strip()
     if not api_key:
-        return False, "Ключ не может быть пустым."
+        return False, "empty"
 
-    # 1. Check duplicate in database
+    # 1. Check duplicate in database; the owner may bring back a key they revoked themselves
+    restore_id = None
     with get_db() as conn:
-        cur = conn.execute("SELECT user_id, is_active FROM api_keys WHERE api_key = ?", (api_key,))
+        cur = conn.execute("SELECT id, user_id, is_active, revoked_by FROM api_keys WHERE api_key = ?", (api_key,))
         row = cur.fetchone()
         if row:
-            return False, "Этот API-ключ уже зарегистрирован в базе."
+            if row["user_id"] != user_id:
+                return False, "duplicate"
+            if row["is_active"]:
+                return False, "mine"
+            restore_id = row["id"]
 
     # 2. Online validation
     is_valid, err_msg = await validate_key_online(api_key)
     if not is_valid:
-        return False, f"Ключ не прошел проверку: {err_msg}"
+        return False, err_msg
 
     # 3. Save key to database
     with get_db() as conn:
-        conn.execute(
-            "INSERT INTO api_keys (user_id, api_key, is_active, cooldown_until, last_used_at) VALUES (?, ?, 1, 0, 0)",
-            (user_id, api_key)
-        )
+        if restore_id is not None:
+            conn.execute(
+                "UPDATE api_keys SET is_active = 1, revoked_by = '', cooldown_until = 0 WHERE id = ?",
+                (restore_id,)
+            )
+        else:
+            conn.execute(
+                "INSERT INTO api_keys (user_id, api_key, is_active, cooldown_until, last_used_at) VALUES (?, ?, 1, 0, 0)",
+                (user_id, api_key)
+            )
         conn.commit()
 
-    logger.info(f"User {user_id} successfully added a new key to the pool.")
-    return True, "Ключ успешно проверен и добавлен в общую казну! Доступ к боту активирован."
+    logger.info(f"User {user_id} successfully added a key to the pool.")
+    return True, "restored" if restore_id is not None else "added"
 
 def get_active_key() -> Optional[str]:
     """
@@ -166,7 +182,7 @@ def revoke_key(api_key: str, reason: str = "") -> Optional[int]:
         if not row:
             return None
         user_id = row["user_id"]
-        conn.execute("UPDATE api_keys SET is_active = 0 WHERE api_key = ?", (api_key,))
+        conn.execute("UPDATE api_keys SET is_active = 0, revoked_by = 'google' WHERE api_key = ?", (api_key,))
         conn.commit()
     logger.warning(f"Key ...{api_key[-6:] if len(api_key) > 6 else 'key'} revoked (user_id={user_id}). Reason: {reason}")
     return user_id
@@ -176,11 +192,38 @@ def revoke_user_keys(user_id: int) -> int:
     Revokes all active keys for a specific user. Returns count of revoked keys.
     """
     with get_db() as conn:
-        cur = conn.execute("UPDATE api_keys SET is_active = 0 WHERE user_id = ? AND is_active = 1", (user_id,))
+        cur = conn.execute(
+            "UPDATE api_keys SET is_active = 0, revoked_by = 'user' WHERE user_id = ? AND is_active = 1", (user_id,)
+        )
         conn.commit()
         count = cur.rowcount
     logger.info(f"Revoked {count} keys for user {user_id}.")
     return count
+
+def revoke_user_key(user_id: int, key_id: int) -> bool:
+    """
+    Revokes one active key owned by user_id. Returns True if it was revoked.
+    """
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE api_keys SET is_active = 0, revoked_by = 'user' WHERE id = ? AND user_id = ? AND is_active = 1",
+            (key_id, user_id)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+def restore_user_key(user_id: int, key_id: int) -> bool:
+    """
+    Brings back a key its owner revoked. Keys rejected by Google stay revoked.
+    """
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE api_keys SET is_active = 1, revoked_by = '', cooldown_until = 0 "
+            "WHERE id = ? AND user_id = ? AND is_active = 0 AND revoked_by = 'user'",
+            (key_id, user_id)
+        )
+        conn.commit()
+        return cur.rowcount > 0
 
 def has_access(user_id: int, admin_ids: Set[int]) -> bool:
     """
@@ -216,22 +259,26 @@ def get_pool_status_for_user(user_id: int) -> Dict[str, Any]:
 
         # User's keys
         cur = conn.execute(
-            "SELECT api_key, is_active, cooldown_until FROM api_keys WHERE user_id = ? ORDER BY id ASC",
+            "SELECT id, api_key, is_active, cooldown_until, revoked_by FROM api_keys WHERE user_id = ? ORDER BY id ASC",
             (user_id,)
         )
         user_keys = []
         for r in cur.fetchall():
-            masked = mask_key(r["api_key"])
-            status_str = "Активен"
+            cooldown_left = max(0, int(r["cooldown_until"] - now)) if r["is_active"] else 0
             if not r["is_active"]:
-                status_str = "Отозван (недействителен)"
-            elif r["cooldown_until"] > now:
-                secs_left = int(r["cooldown_until"] - now)
-                status_str = f"Кулдаун 429 ({secs_left}с)"
+                state = "revoked"
+            elif cooldown_left > 0:
+                state = "cooldown"
+            else:
+                state = "active"
             user_keys.append({
-                "masked": masked,
+                "id": r["id"],
+                "masked": mask_key(r["api_key"]),
+                "suffix": r["api_key"][-4:],
                 "is_active": bool(r["is_active"]),
-                "status": status_str
+                "state": state,
+                "cooldown_left": cooldown_left,
+                "revoked_by": r["revoked_by"] or "",
             })
 
         return {

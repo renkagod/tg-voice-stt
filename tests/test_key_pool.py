@@ -41,12 +41,17 @@ class TestKeyPool(unittest.TestCase):
         # Try adding the exact same key for user 222
         success2, msg2 = asyncio.run(key_pool.add_user_key(222, "AIzaSyUSER_KEY_A"))
         self.assertFalse(success2)
-        self.assertIn("уже зарегистрирован", msg2)
+        self.assertEqual(msg2, "duplicate")
+
+        # The owner re-sending an active key of their own
+        success_mine, msg_mine = asyncio.run(key_pool.add_user_key(111, "AIzaSyUSER_KEY_A"))
+        self.assertFalse(success_mine)
+        self.assertEqual(msg_mine, "mine")
 
         # Try adding system key
         success3, msg3 = asyncio.run(key_pool.add_user_key(111, "AIzaSySYSTEM_KEY_TEST_001"))
         self.assertFalse(success3)
-        self.assertIn("уже зарегистрирован", msg3)
+        self.assertEqual(msg3, "duplicate")
 
     @patch("key_pool.validate_key_online", new_callable=AsyncMock)
     def test_round_robin_rotation(self, mock_validate):
@@ -114,6 +119,47 @@ class TestKeyPool(unittest.TestCase):
         count = key_pool.revoke_user_keys(555)
         self.assertEqual(count, 2)
         self.assertFalse(key_pool.has_access(555, admin_ids=set()))
+
+    def test_revoke_and_restore_single_key(self):
+        with key_pool.get_db() as conn:
+            conn.execute("INSERT INTO api_keys (user_id, api_key, is_active) VALUES (555, 'K1', 1)")
+            conn.execute("INSERT INTO api_keys (user_id, api_key, is_active) VALUES (555, 'K2', 1)")
+            conn.commit()
+        keys = key_pool.get_pool_status_for_user(555)["user_keys"]
+        k1, k2 = keys[0]["id"], keys[1]["id"]
+
+        # Someone else cannot touch the key
+        self.assertFalse(key_pool.revoke_user_key(777, k1))
+
+        self.assertTrue(key_pool.revoke_user_key(555, k1))
+        self.assertFalse(key_pool.revoke_user_key(555, k1))
+        self.assertTrue(key_pool.has_access(555, admin_ids=set()))
+        states = {k["id"]: (k["state"], k["revoked_by"]) for k in key_pool.get_pool_status_for_user(555)["user_keys"]}
+        self.assertEqual(states[k1], ("revoked", "user"))
+        self.assertEqual(states[k2], ("active", ""))
+
+        self.assertTrue(key_pool.restore_user_key(555, k1))
+        self.assertEqual(key_pool.get_pool_status_for_user(555)["user_keys"][0]["state"], "active")
+
+    def test_google_rejected_key_cannot_be_restored(self):
+        with key_pool.get_db() as conn:
+            conn.execute("INSERT INTO api_keys (user_id, api_key, is_active) VALUES (555, 'DEAD', 1)")
+            conn.commit()
+        key_pool.revoke_key("DEAD", reason="403")
+        key = key_pool.get_pool_status_for_user(555)["user_keys"][0]
+        self.assertEqual(key["revoked_by"], "google")
+        self.assertFalse(key_pool.restore_user_key(555, key["id"]))
+
+    @patch("key_pool.validate_key_online", new_callable=AsyncMock)
+    def test_resending_own_revoked_key_restores_it(self, mock_validate):
+        mock_validate.return_value = (True, "OK")
+        import asyncio
+        asyncio.run(key_pool.add_user_key(111, "AIzaSyUSER_KEY_B"))
+        key_pool.revoke_user_keys(111)
+        success, code = asyncio.run(key_pool.add_user_key(111, "AIzaSyUSER_KEY_B"))
+        self.assertTrue(success)
+        self.assertEqual(code, "restored")
+        self.assertTrue(key_pool.has_access(111, admin_ids=set()))
 
     def test_has_access_for_admins(self):
         # Admin has access even without keys in DB
